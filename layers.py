@@ -6,13 +6,13 @@ import theano.tensor as T
 
 
 class EmbedLayer:
-    def __init__(self, rng, n_in, n_out,
+    def __init__(self, rng, n_in, n_out, window,
                  name, input_e, W_e=None):
         if isinstance(W_e, list):  # init embedding by list
             W_e = theano.shared(value=numpy.asarray(W_e, dtype=theano.config.floatX), name=name + 'W_e', borrow=True)
         elif isinstance(W_e, numpy.ndarray):  # init embedding by ndarray
             W_e = theano.shared(value=W_e, name=name + 'W_e', borrow=True)
-            print(name + 'W_e: init by numpy.ndarray' + str(W_e.get_value().shape))
+            print(name + ' W_e: init by numpy.ndarray' + str(W_e.get_value().shape))
         elif W_e is None:  # randomly init embedding
             W_e_values = numpy.asarray(rng.uniform(low=-numpy.sqrt(6. / (n_in + n_out)),
                                                    high=numpy.sqrt(6. / (n_in + n_out)),
@@ -22,12 +22,16 @@ class EmbedLayer:
         self.input_e = input_e
         self.W_e = W_e
         self.params = [self.W_e]
-        if self.input_e.ndim == 2:
-            self.output_e = T.reshape(self.W_e[self.input_e.flatten()], (input_e.shape[0], input_e.shape[1], n_out))
-        elif self.input_e.ndim == 3:
-            self.output_e = T.reshape(self.W_e[self.input_e.flatten()],
-                                      (input_e.shape[0], input_e.shape[1], n_out * input_e.shape[2]))
+        if self.input_e.ndim == 1:
+            self.output_e = T.reshape(self.W_e[self.input_e], (input_e.shape[0], n_out))
+        elif self.input_e.ndim == 2:
+            if window > 1:
+                self.output_e = T.reshape(self.W_e[self.input_e.flatten()],
+                                          (input_e.shape[0], input_e.shape[1] * n_out))
+            else:
+                self.output_e = T.reshape(self.W_e[self.input_e.flatten()], (input_e.shape[0], input_e.shape[1], n_out))
         else:
+            print(self.input_e.ndim)
             raise NotImplementedError()
         # output dim: timesteps*n_samples*emb_dim
 
@@ -43,13 +47,13 @@ class LinearLayer:
             W = theano.shared(value=numpy.asarray(W, dtype=theano.config.floatX), name=name + 'W', borrow=True)
         elif isinstance(W, numpy.ndarray):
             W = theano.shared(value=W, name=name + 'W', borrow=True)
-            print(name + 'W: init by numpy.ndarray' + str(W.get_value().shape))
+            print(name + ' W: init by numpy.ndarray' + str(W.get_value().shape))
 
         if isinstance(b, list):  # init b
             b = theano.shared(value=numpy.asarray(b, dtype=theano.config.floatX), name=name + 'b', borrow=True)
         elif isinstance(b, numpy.ndarray):
             b = theano.shared(value=b, name=name + 'b', borrow=True)
-            print(name + 'b: init by numpy.ndarray' + str(b.get_value().shape))
+            print(name + ' b: init by numpy.ndarray' + str(b.get_value().shape))
 
         if W is None:
             # for T.tanh
@@ -115,8 +119,8 @@ class LSTMLayer:
                  bidirect, name, activation, Ws=None, Us=None, bs=None):
 
         if bidirect:
-            n_dim = n_out / 2
-            if int(n_out / 2) * 2 != n_out:
+            n_dim = int(n_out / 2)
+            if n_dim * 2 != n_out:
                 print('bidirectional model must have an even n_dim in LSTM layer!')
                 input()
         else:
@@ -127,19 +131,19 @@ class LSTMLayer:
             Ws = theano.shared(value=numpy.asarray(Ws, dtype=theano.config.floatX), name=name + 'Ws', borrow=True)
         elif isinstance(Ws, numpy.ndarray):
             Ws = theano.shared(value=Ws, name=name + 'Ws', borrow=True)
-            print(name + 'Ws: init by numpy.ndarray' + str(Ws.get_value().shape))
+            print(name + ' Ws: init by numpy.ndarray' + str(Ws.get_value().shape))
         # init Us
         if isinstance(Us, list):
             Us = theano.shared(value=numpy.asarray(Us, dtype=theano.config.floatX), name=name + 'Us', borrow=True)
         elif isinstance(Us, numpy.ndarray):
             Us = theano.shared(value=Us, name=name + 'Us', borrow=True)
-            print(name + 'Us: init by numpy.ndarray' + str(Us.get_value().shape))
+            print(name + ' Us: init by numpy.ndarray' + str(Us.get_value().shape))
         # init bs
         if isinstance(bs, list):
             bs = theano.shared(value=numpy.asarray(bs, dtype=theano.config.floatX), name=name + 'bs', borrow=True)
         elif isinstance(bs, numpy.ndarray):
             bs = theano.shared(value=bs, name=name + 'bs', borrow=True)
-            print(name + 'bs: init by numpy.ndarray' + str(bs.get_value().shape))
+            print(name + ' bs: init by numpy.ndarray' + str(bs.get_value().shape))
         # randomly init ###############
         # randomly init Ws: 2 for bidirectional, 4 for 4 gates in LSTM
         if Ws is None:
@@ -155,7 +159,7 @@ class LSTMLayer:
             Us = theano.shared(value=U_v, name=name + 'us', borrow=True)
         # randomly init bs: 2 for bidirectional, 4 for 4 gates in LSTM
         if bs is None:
-            b_v = numpy.zeros((2 if bidirect else 1, 4, n_dim))
+            b_v = numpy.zeros((2 if bidirect else 1, 4, n_dim), dtype=theano.config.floatX)
             bs = theano.shared(value=b_v, name=name + 'bs', borrow=True)
 
         # print('linear layer params:%d' % ((2 if bidirect else 1) * 4 * (n_in + n_dim + 1) * n_dim))
@@ -176,26 +180,41 @@ class LSTMLayer:
             gate2 = T.dot(x, W[2]) + T.dot(h, U[2]) + b[2]
             gate3 = T.dot(x, W[3]) + T.dot(h, U[3]) + b[3]
             ct = T.nnet.sigmoid(gate0) * T.tanh(gate1) + T.nnet.sigmoid(gate2) * c  # dim = n_f
-            ct = T.cast(mask[:, None] * ct + (1. - mask)[:, None] * c, theano.config.floatX)
+            ct = T.cast(mask[:, None] * ct + (1. - mask[:, None]) * c, theano.config.floatX)
             ht = T.nnet.sigmoid(gate3) * T.tanh(ct)  # dim = n_f
-            ht = T.cast(mask[:, None] * ht + (1. - mask)[:, None] * h, theano.config.floatX)
-            return [ht, ct]
+            ht = T.cast(mask[:, None] * ht + (1. - mask[:, None]) * h, theano.config.floatX)
+            return ht, ct
 
+        def gates_ct_ht_nomask(x, h, c, W, U, b):
+            gate0 = T.dot(x, W[0]) + T.dot(h, U[0]) + b[0]
+            gate1 = T.dot(x, W[1]) + T.dot(h, U[1]) + b[1]
+            gate2 = T.dot(x, W[2]) + T.dot(h, U[2]) + b[2]
+            gate3 = T.dot(x, W[3]) + T.dot(h, U[3]) + b[3]
+            ct = T.nnet.sigmoid(gate0) * T.tanh(gate1) + T.nnet.sigmoid(gate2) * c  # dim = n_f
+            ht = T.nnet.sigmoid(gate3) * T.tanh(ct)  # dim = n_f
+            return ht, ct
+
+        if input_lstm.ndim == 3:
+            output_info_shape = (input_lstm.shape[1], n_dim)
+        else:
+            output_info_shape = (n_dim,)
         # forward LSTM
-        hids1, updates = theano.scan(fn=gates_ct_ht, sequences=[self.input_lstm, self.input_mask],
-                                     outputs_info=[T.zeros((input_lstm.shape[1], n_dim,), dtype=theano.config.floatX),
-                                                   T.zeros((input_lstm.shape[1], n_dim,), dtype=theano.config.floatX)],
+        hids1, updates = theano.scan(fn=gates_ct_ht if input_mask else gates_ct_ht_nomask,
+                                     sequences=[self.input_lstm, self.input_mask] if input_mask else [self.input_lstm],
+                                     outputs_info=[T.zeros(output_info_shape, dtype=theano.config.floatX),
+                                                   T.zeros(output_info_shape, dtype=theano.config.floatX)],
                                      non_sequences=[self.Ws[0], self.Us[0], self.bs[0]])
         # backward LSTM
         if not bidirect:
             lin_output = hids1[0]
         else:
-            hids2, updates = theano.scan(fn=gates_ct_ht, sequences=[self.input_lstm[::-1], self.input_mask][::-1],
-                                         outputs_info=[
-                                             T.zeros((input_lstm.shape[1], n_dim,), dtype=theano.config.floatX),
-                                             T.zeros((input_lstm.shape[1], n_dim,), dtype=theano.config.floatX)],
+            hids2, updates = theano.scan(fn=gates_ct_ht if input_mask else gates_ct_ht_nomask,
+                                         sequences=[self.input_lstm[::-1], self.input_mask[::-1]]
+                                         if input_mask else [self.input_lstm],
+                                         outputs_info=[T.zeros(output_info_shape, dtype=theano.config.floatX),
+                                                       T.zeros(output_info_shape, dtype=theano.config.floatX)],
                                          non_sequences=[self.Ws[1], self.Us[1], self.bs[1]])
-            lin_output = T.concatenate([hids1[0], hids2[0][::-1]], axis=2)
+            lin_output = T.concatenate([hids1[0], hids2[0][::-1]], axis=input_lstm.ndim - 1)
 
         if activation == 'hardtanh':
             self.output_lstm = T.clip(lin_output, -1, 1)
@@ -232,19 +251,19 @@ class GRULayer:  # TODO: test GRU
             Ws = theano.shared(value=numpy.asarray(Ws, dtype=theano.config.floatX), name=name + 'Ws', borrow=True)
         elif isinstance(Ws, numpy.ndarray):
             Ws = theano.shared(value=Ws, name=name + 'Ws', borrow=True)
-            print(name + 'Ws: init by numpy.ndarray' + str(Ws.get_value().shape))
+            print(name + ' Ws: init by numpy.ndarray' + str(Ws.get_value().shape))
         # init Us
         if isinstance(Us, list):
             Us = theano.shared(value=numpy.asarray(Us, dtype=theano.config.floatX), name=name + 'Us', borrow=True)
         elif isinstance(Us, numpy.ndarray):
             Us = theano.shared(value=Us, name=name + 'Us', borrow=True)
-            print(name + 'Us: init by numpy.ndarray' + str(Us.get_value().shape))
+            print(name + ' Us: init by numpy.ndarray' + str(Us.get_value().shape))
         # init bs
         if isinstance(bs, list):
             bs = theano.shared(value=numpy.asarray(bs, dtype=theano.config.floatX), name=name + 'bs', borrow=True)
         elif isinstance(bs, numpy.ndarray):
             bs = theano.shared(value=bs, name=name + 'bs', borrow=True)
-            print(name + 'bs: init by numpy.ndarray' + str(bs.get_value().shape))
+            print(name + ' bs: init by numpy.ndarray' + str(bs.get_value().shape))
         # ############### randomly init
         # randomly init Ws: 2 for bidirectional, 3 for 3 gates in GRU
         if Ws is None:
@@ -277,15 +296,21 @@ class GRULayer:  # TODO: test GRU
             zt = T.dot(x, W[0]) + T.dot(h, U[0]) + b[0]  # update
             rt = T.dot(x, W[1]) + T.dot(h, U[1]) + b[1]  # reset
             ct = T.tanh(T.dot(x, W[2]) + T.dot(h * rt, U[2]) + b[2])  # dim = n_f
-            ct = T.cast(mask[:, None] * ct + (1. - mask)[:, None] * c, theano.config.floatX)  # dim = n_f
+            if x.ndim == 2:
+                ct = T.cast(mask[:, None] * ct + (1. - mask)[:, None] * c, theano.config.floatX)  # dim = n_f
             ht = (T.ones_like(zt) - zt) * ct + zt * h
-            ht = T.cast(mask[:, None] * ht + (1. - mask)[:, None] * h, theano.config.floatX)
+            if x.ndim == 2:
+                ht = T.cast(mask[:, None] * ht + (1. - mask)[:, None] * h, theano.config.floatX)
             return [ht, ct]
 
+        if input_gru.ndim == 3:
+            output_info_shape = (input_gru.shape[1], n_dim)
+        else:
+            output_info_shape = (n_dim,)
         # forward GRU
         hids1, updates = theano.scan(fn=gates_ct_ht, sequences=[self.input_gru, self.input_mask],
-                                     outputs_info=[T.zeros((input_gru.shape[1], n_dim,), dtype=theano.config.floatX),
-                                                   T.zeros((input_gru.shape[1], n_dim,), dtype=theano.config.floatX)],
+                                     outputs_info=[T.zeros(output_info_shape, dtype=theano.config.floatX),
+                                                   T.zeros(output_info_shape, dtype=theano.config.floatX)],
                                      non_sequences=[self.Ws[0], self.Us[0], self.bs[0]])
         # backward GRU
         if not bidirect:
@@ -293,10 +318,10 @@ class GRULayer:  # TODO: test GRU
         else:
             hids2, updates = theano.scan(fn=gates_ct_ht, sequences=[self.input_gru[::-1], self.input_mask][::-1],
                                          outputs_info=[
-                                             T.zeros((input_gru.shape[1], n_dim,), dtype=theano.config.floatX),
-                                             T.zeros((input_gru.shape[1], n_dim,), dtype=theano.config.floatX)],
+                                             T.zeros(output_info_shape, dtype=theano.config.floatX),
+                                             T.zeros(output_info_shape, dtype=theano.config.floatX)],
                                          non_sequences=[self.Ws[1], self.Us[1], self.bs[1]])
-            lin_output = T.concatenate([hids1[0], hids2[0][::-1]], axis=2)
+            lin_output = T.concatenate([hids1[0], hids2[0][::-1]], axis=self.input_gru.ndim - 1)
 
         if activation == 'hardtanh':
             self.output_gru = T.clip(lin_output, -1, 1)

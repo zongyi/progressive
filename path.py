@@ -5,8 +5,16 @@ if skt.gethostname() in ['acl', 'acl221']:
     cpb_train_f = '/home/xql/Data/wangzhen/bilstm/text/cpbtrain'
     cpb_test_f = '/home/xql/Data/wangzhen/bilstm/text/cpbtest'
     cpb_dev_f = '/home/xql/Data/wangzhen/bilstm/text/cpbdev'
+    pku_train_f = '/home/xql/Data/wangzhen/bilstm/text/cpbtest'
+    pku_test_f = '/home/xql/Data/wangzhen/bilstm/text/cpbtest'
+    pku_dev_f = '/home/xql/Data/wangzhen/bilstm/text/cpbdev'
 else:
     vec_bin_f = '/media/xql/新加卷/Data/wangzhen/bilstm/vector/vectors.bin'
     cpb_train_f = '/media/xql/新加卷/Data/wangzhen/bilstm/text/cpbtrain'
     cpb_test_f = '/media/xql/新加卷/Data/wangzhen/bilstm/text/cpbtest'
     cpb_dev_f = '/media/xql/新加卷/Data/wangzhen/bilstm/text/cpbdev'
+    pku_train_f = '/home/xql/Data/wangzhen/bilstm/text/cpbtest'
+    pku_test_f = '/home/xql/Data/wangzhen/bilstm/text/cpbtest'
+    pku_dev_f = '/home/xql/Data/wangzhen/bilstm/text/cpbdev'
+
+pku_text_f = '/media/xql/新加卷/Source/VSO/PKU/Lab/POSTagger-Train_TestV5/data/news/text.txt'
