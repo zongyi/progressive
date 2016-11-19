@@ -9,9 +9,12 @@ class EmbedLayer:
     def __init__(self, rng, n_in, n_out, window,
                  name, input_e, W_e=None):
         if isinstance(W_e, list):  # init embedding by list
-            W_e = theano.shared(value=numpy.asarray(W_e, dtype=theano.config.floatX), name=name + 'W_e', borrow=True)
-        elif isinstance(W_e, numpy.ndarray):  # init embedding by ndarray
-            W_e = theano.shared(value=W_e, name=name + 'W_e', borrow=True)
+            W_e = numpy.asarray(W_e, dtype=theano.config.floatX)
+        if isinstance(W_e, numpy.ndarray):  # init embedding by ndarray
+            W_e = theano.shared(value=(W_e - W_e.min()) * 2.0 *
+                                      numpy.sqrt(6. / (n_in + n_out)) /
+                                      (W_e.max() - W_e.min()) - numpy.sqrt(6. / (n_in + n_out)), name=name + 'W_e',
+                                borrow=True)
             print(name + ' W_e: init by numpy.ndarray' + str(W_e.get_value().shape))
         elif W_e is None:  # randomly init embedding
             W_e_values = numpy.asarray(rng.uniform(low=-numpy.sqrt(6. / (n_in + n_out)),

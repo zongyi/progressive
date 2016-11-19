@@ -81,7 +81,32 @@ def build_idx(words):
     return word2idx, idx2word
 
 
-class CpbDatasets(Datasets):
+def pad(max_len, window, datasets):
+    ret_datasets = []
+    for dataset in datasets:
+        w_sents, p_sents, dist_sents, vs_i, vs_idx, rs_idx = dataset
+        n_samples = len(vs_i)
+        ws = numpy.zeros((max_len, n_samples, window), dtype='int32')
+        ps = numpy.zeros((max_len, n_samples, window), dtype='int32')
+        dists = numpy.zeros((max_len, n_samples), dtype='int32')
+        vis = numpy.zeros((n_samples), dtype='int32')
+        vs = numpy.zeros((max_len, n_samples), dtype='int32')
+        rs = numpy.zeros((max_len, n_samples), dtype='int32')
+        lens = numpy.zeros((n_samples), dtype='int32')
+        for i, (w, p, dist, v_i, v, r) in enumerate(zip(w_sents, p_sents, dist_sents, vs_i, vs_idx, rs_idx)):
+            sent_len = len(w)
+            ws[-sent_len:, i, :] = numpy.asarray(w, dtype='int32')
+            ps[-sent_len:, i, :] = numpy.asarray(p, dtype='int32')
+            dists[-sent_len:, i] = numpy.asarray(dist, dtype='int32')
+            vis[i] = numpy.int32(v_i)
+            vs[-sent_len:, i] = v * numpy.ones((sent_len), dtype='int32')
+            rs[-sent_len:, i] = numpy.asarray(r, dtype='int32')
+            lens[i] = numpy.int32(sent_len)
+        ret_datasets.append([ws, ps, dists, vis, vs, rs, lens])
+    return ret_datasets
+
+
+class CpbDatasets(Datasets):  # 31235 2064 3604
     def __init__(self, worddim, window, max_dist):
         super(CpbDatasets, self).__init__('cpb')
         self.worddim = worddim
@@ -89,8 +114,8 @@ class CpbDatasets(Datasets):
         self.max_dist = max_dist
         self.word2vecidx, self.vecs_idx, self.max_len = None, None, 0  # only for processing
         self.word2idx = dict()
-        self.pos2idx, self.idx2pos = build_idx(POSS)
-        self.role2idx = dict([(word, i) for i, word in enumerate(TAGGING)])
+        self.pos2idx, self.idx2pos = build_idx(CPB_POSS)
+        self.role2idx = dict([(word, i) for i, word in enumerate(CPB_TAGGING)])
         self.datasets = []
         self.name = 'cpb.%d.%d.%d.h5' % (worddim, window, max_dist)
 
@@ -180,35 +205,13 @@ class CpbDatasets(Datasets):
             max(sent_lens) - 1, sum(sent_lens) / len(sent_lens), len(vs_i)))
         return dataset
 
-    def pad(self, datasets):
-        self.datasets = []
-        for dataset in datasets:
-            w_sents, p_sents, dist_sents, vs_i, vs_idx, rs_idx = dataset
-            n_samples = len(vs_i)
-            ws = numpy.zeros((self.max_len, n_samples, self.window), dtype='int32')
-            ps = numpy.zeros((self.max_len, n_samples, self.window), dtype='int32')
-            dists = numpy.zeros((self.max_len, n_samples), dtype='int32')
-            vis = numpy.zeros((n_samples), dtype='int32')
-            vs = numpy.zeros((self.max_len, n_samples), dtype='int32')
-            rs = numpy.zeros((self.max_len, n_samples), dtype='int32')
-            lens = numpy.zeros((n_samples), dtype='int32')
-            for i, (w, p, dist, v_i, v, r) in enumerate(zip(w_sents, p_sents, dist_sents, vs_i, vs_idx, rs_idx)):
-                sent_len = len(w)
-                ws[-sent_len:, i, :] = numpy.asarray(w, dtype='int32')
-                ps[-sent_len:, i, :] = numpy.asarray(p, dtype='int32')
-                dists[-sent_len:, i] = numpy.asarray(dist, dtype='int32')
-                vis[i] = numpy.int32(v_i)
-                vs[-sent_len:, i] = v * numpy.ones((sent_len), dtype='int32')
-                rs[-sent_len:, i] = numpy.asarray(r, dtype='int32')
-                lens[i] = numpy.int32(sent_len)
-            self.datasets.append([ws, ps, dists, vis, vs, rs, lens])
 
     def process(self):
         train_dataset = self.process_one(self.read_sent__add_word(cpb_train_f))
         dev_dataset = self.process_one(self.read_sent__add_word(cpb_dev_f))
         test_dataset = self.process_one(self.read_sent__add_word(cpb_test_f))
         self.vecs = load_vecs(self.vecs_idx)
-        self.pad([train_dataset, dev_dataset, test_dataset])
+        self.datasets = pad(self.max_len, self.window, [train_dataset, dev_dataset, test_dataset])
         return self.datasets, self.vecs
 
     def dump(self):
@@ -243,22 +246,72 @@ class PkuDatasets(Datasets):
         self.max_dist = max_dist
         self.word2vecidx, self.vecs_idx, self.max_len = None, None, 0  # only for processing
         self.word2idx = dict()
-        self.pos2idx, self.idx2pos = build_idx(POSS)
-        self.role2idx = dict([(word, i) for i, word in enumerate(TAGGING)])
+        self.pos2idx, self.idx2pos = build_idx(PKU_POSS)
+        self.role2idx = dict([(word, i) for i, word in enumerate(PKU_TAGGING)])
         self.datasets = []
-        self.name = 'cpb.%d.%d.%d.h5' % (worddim, window, max_dist)
+        self.name = 'pku.%d.%d.%d.h5' % (worddim, window, max_dist)
 
     def preprocess(self):
         # collect POSS, TAGGING
         # split datasets
         # upload to remote and change path in path.py
+        PKU_POSS = set()
+        PKU_TAGS = set()
+        lines = []
         with open(pku_text_f, 'rb') as fin:
             while 1:
                 line = fin.readline().strip()
                 if not line:
                     break
-                    # TODO here
-                    # TODO: change cpb pos to auto-tagged labels
+                segs = line.split(b' ')
+                new_segs, old_roles = [], []
+                for i, seg in enumerate(segs):
+                    items = seg.split(b'/')
+                    PKU_POSS.add(items[-3].decode('utf-8'))
+                    PKU_TAGS.add(items[-1].decode('utf-8'))
+                    tok = seg[:seg.rfind(b'/')]
+                    tok = tok[:tok.rfind(b'/')]
+                    tok = tok[:tok.rfind(b'/')]
+                    new_segs.append([tok, items[-3]])
+                    old_roles.append(items[-1])
+                sent_len = len(segs)
+                for i, (tok, pos) in enumerate(new_segs):
+                    role = old_roles[i]
+                    if role in [b'rel', b'O']:
+                        new_role = role
+                    else:
+                        if i != 0 and old_roles[i - 1] == role:
+                            if i == sent_len - 1 or old_roles[i + 1] != role:
+                                new_role = b'E-' + role
+                            else:
+                                new_role = b'I-' + role
+                        else:
+                            if i == sent_len - 1 or old_roles[i + 1] != role:
+                                new_role = b'S-' + role
+                            else:
+                                new_role = b'B-' + role
+                    new_segs[i] = tok.replace(b'/', b'*') + b'/' + pos + b'/' + new_role
+                lines.append(b' '.join(new_segs))
+        print(list(PKU_POSS))
+        print(list(PKU_TAGS))
+        print(len(lines))
+        test_num = 1125
+        dev_num = 973
+        train_num = len(lines) - test_num - dev_num
+        numpy.random.shuffle(lines)
+        train_fout = open(pku_train_f, 'wb')
+        dev_fout = open(pku_dev_f, 'wb')
+        test_fout = open(pku_test_f, 'wb')
+        for i, line in enumerate(lines):
+            if i < train_num:
+                train_fout.write(line + b'\n')
+            elif i < train_num + dev_num:
+                dev_fout.write(line + b'\n')
+            else:
+                test_fout.write(line + b'\n')
+        train_fout.close()
+        dev_fout.close()
+        test_fout.close()
 
     def read_sent__add_word(self, filename):
         line_num = 0
@@ -287,11 +340,14 @@ class PkuDatasets(Datasets):
                     w_idx.append(self.word2idx.get(items[0], OOV_IDX))
                     p_idx.append(self.pos2idx[items[1]])
                     if items[-1] == b'rel':
-                        assert v_i == -1
-                        v_i = i
+                        if v_i == -1:
+                            v_i = i
+                        else:
+                            invalids += 1
+                            v_i = -2
                     else:
                         r_idx.append(self.role2idx[items[-1]])
-                if v_i == -1 or len(r_idx) <= 1:
+                if v_i < 0 or len(r_idx) <= 1:
                     invalids += 1
                     continue
                 ws_idx.append(w_idx)
@@ -346,35 +402,12 @@ class PkuDatasets(Datasets):
             max(sent_lens) - 1, sum(sent_lens) / len(sent_lens), len(vs_i)))
         return dataset
 
-    def pad(self, datasets):
-        self.datasets = []
-        for dataset in datasets:
-            w_sents, p_sents, dist_sents, vs_i, vs_idx, rs_idx = dataset
-            n_samples = len(vs_i)
-            ws = numpy.zeros((self.max_len, n_samples, self.window), dtype='int32')
-            ps = numpy.zeros((self.max_len, n_samples, self.window), dtype='int32')
-            dists = numpy.zeros((self.max_len, n_samples), dtype='int32')
-            vis = numpy.zeros((n_samples), dtype='int32')
-            vs = numpy.zeros((self.max_len, n_samples), dtype='int32')
-            rs = numpy.zeros((self.max_len, n_samples), dtype='int32')
-            lens = numpy.zeros((n_samples), dtype='int32')
-            for i, (w, p, dist, v_i, v, r) in enumerate(zip(w_sents, p_sents, dist_sents, vs_i, vs_idx, rs_idx)):
-                sent_len = len(w)
-                ws[-sent_len:, i, :] = numpy.asarray(w, dtype='int32')
-                ps[-sent_len:, i, :] = numpy.asarray(p, dtype='int32')
-                dists[-sent_len:, i] = numpy.asarray(dist, dtype='int32')
-                vis[i] = numpy.int32(v_i)
-                vs[-sent_len:, i] = v * numpy.ones((sent_len), dtype='int32')
-                rs[-sent_len:, i] = numpy.asarray(r, dtype='int32')
-                lens[i] = numpy.int32(sent_len)
-            self.datasets.append([ws, ps, dists, vis, vs, rs, lens])
-
     def process(self):
-        train_dataset = self.process_one(self.read_sent__add_word(cpb_train_f))
-        dev_dataset = self.process_one(self.read_sent__add_word(cpb_dev_f))
-        test_dataset = self.process_one(self.read_sent__add_word(cpb_test_f))
+        train_dataset = self.process_one(self.read_sent__add_word(pku_train_f))
+        dev_dataset = self.process_one(self.read_sent__add_word(pku_dev_f))
+        test_dataset = self.process_one(self.read_sent__add_word(pku_test_f))
         self.vecs = load_vecs(self.vecs_idx)
-        self.pad([train_dataset, dev_dataset, test_dataset])
+        self.datasets = pad(self.max_len, self.window, [train_dataset, dev_dataset, test_dataset])
         return self.datasets, self.vecs
 
     def dump(self):
@@ -402,5 +435,7 @@ class PkuDatasets(Datasets):
 
 
 if __name__ == '__main__':
-    data = CpbDatasets(worddim=50, window=3, max_dist=500).get()
-    print('')
+    # data = CpbDatasets(worddim=50, window=3, max_dist=500).get()
+    # print(data[0][0][0].shape[1],data[0][1][0].shape[1],data[0][2][0].shape[1])
+    # PkuDatasets(worddim=50, window=3, max_dist=500).preprocess()
+    data = PkuDatasets(worddim=50, window=3, max_dist=500).get()

@@ -5,7 +5,7 @@ from const import *
 class BasicNet(object):
     def __init__(self, w_emb_n_in, w_emb_n_out, p_emb_n_in, p_emb_n_out, dist_emb_n_in, dist_emb_n_out,
                  lin1_n_out, rnn_n_out, lin2_n_out, lin3_n_out,
-                 window,
+                 window, TRANS2, TRANS0,
                  inputs, W):
         input_w, input_p, input_dist, input_v, input_entry_exit_mask, input_vi, input_y = inputs
         rng = numpy.random.RandomState(39287)
@@ -54,8 +54,8 @@ class BasicNet(object):
         argmax_prev_tags = score[1]
         max_tag = T.argmax(p_paths[-1])
 
-        def get_prev_tag(idx, next_tag, argmax_prev_tags):
-            return argmax_prev_tags[-idx - 1][next_tag]
+        def get_prev_tag(idx, next_tag, _argmax_prev_tags):
+            return _argmax_prev_tags[-idx - 1][next_tag]
 
         seq, updates = theano.scan(fn=get_prev_tag,
                                    sequences=T.arange(argmax_prev_tags.shape[0]),
@@ -68,8 +68,7 @@ class BasicNet(object):
 
         def logadd(p_y_given_x, i, prev_p_path, s):
             max_p = T.max(prev_p_path)  # just to avoid overflow
-            p = prev_p_path + T.switch(T.eq(i + 1, s), TRANS0,
-                                       TRANS2) - max_p  # all the valid paths to current tags
+            p = prev_p_path + T.switch(T.eq(i + 1, s), TRANS0, TRANS2) - max_p  # all the valid paths to current tags
             log_sum_exp = T.log(T.sum(T.exp(p), axis=1))
             return p_y_given_x + max_p + log_sum_exp
 
