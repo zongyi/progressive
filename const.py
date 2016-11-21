@@ -46,10 +46,39 @@ for i in range(len(CPB_TAGGING)):
             CPB_TRANS2[i][j] = numpy.float32('-inf')
 CPB_TRANS0 = numpy.zeros((len(CPB_TAGGING), len(CPB_TAGGING)), dtype='float32')
 
-PKU_POSS = ['y', 'u', 'an', 'vd', 'n', 'r', 'm', 's', 'nr', 'Vg', 'Tg', 'l', 'p', 'c', 'h', 'i', 'z', 'd', 't', 'k',
-            'w', 'vn', 'Ag', 'f', 'ad', 'q', 'Bg', 'nz', 'e', 'j', 'Ng', 'v', 'nt', 'b', 'ns', 'Dg', 'o', 'a']
+PKU_POSS = ['l', 'Bg', 'k', 'd', 'q', 'h', 'u', 'p', 't', 'Mg', 'r', 'v', 'w', 'j', 'e', 'c', 'o', 's', 'Ng', 'nr', 'i',
+            'b', 'f', 'n', 'm', 'z', 'vd', 'ad', 'vn', 'an', 'Tg', '%', 'Dg', 'nz', 'ns', 'nt', 'Qg', 'a', 'Ag', 'Vg',
+            'y', 'Ug']
 PKU_POSS = [p.encode('utf-8') for p in PKU_POSS]
-PKU_POSS += ['BOS', 'EOS']
+PKU_POSS2to1 = {b'ld': b'l', b'Bg': b'Bg', b'lb': b'l', b'la': b'l', b'ln': b'l', b'lm': b'l', b'k1': b'k', b'lv': b'l',
+                b'df': b'd',
+                b'dc': b'd', b'du': b'd', b'qt': b'q', b'qr': b'q', b'd': b'd', b'qv': b'q', b'h': b'h', b'uz': b'u',
+                b'l': b'l',
+                b'p': b'p', b'qc': b'q', b'qb': b'q', b'qe': b'q', b't': b't', b'qj': b'q', b'ql': b'q', b'qz': b'q',
+                b'uv': b'u',
+                b'Mg': b'Mg', b'rr': b'r', b'rz': b'r', b'vt2': b'v', b'ui': b'u', b'qd': b'q', b'wf': b'w',
+                b'vx': b'v', b'wd': b'w',
+                b'wm': b'w', b'wj': b'w', b'ww': b'w', b'jn': b'j', b'wt': b'w', b'ws': b'w', b'wp': b'w', b'wzz': b'w',
+                b'e1': b'e',
+                b'wy': b'w', b'c': b'c', b'k': b'k', b'wu': b'w', b'o': b'o', b'ud': b'u', b's': b's', b'w': b'w',
+                b'Ng': b'Ng',
+                b'dfu': b'd', b'u1': b'u', b'nrg': b'nr', b'nrf': b'nr', b'iv': b'i', b'vi_a': b'v', b'b': b'b',
+                b'f': b'f', b'j': b'j',
+                b'us': b'u', b'n': b'n', b'ul': b'u', b'uo': b'u', b'r': b'r', b'mq': b'm', b'v': b'v', b'ue': b'u',
+                b'vt': b'v',
+                b'z': b'z', b'vd': b'vd', b'ad': b'ad', b'vi': b'v', b'vl': b'v', b'vn': b'vn', b'an': b'an',
+                b'wky': b'w', b'vq': b'v',
+                b'wkz': b'w', b'im': b'i', b'vu': b'v', b'in': b'i', b'ia': b'i', b'Tg': b'Tg', b'ic': b'i',
+                b'ib': b'i', b'id': b'i',
+                b'nh': b'n', b'Tg1': b'Tg', b'%': b'%', b'Dg': b'Dg', b'nx': b'n', b'nz': b'nz', b'ryw': b'r',
+                b'nr': b'nr', b'ns': b'ns',
+                b'nt': b'nt', b'Qg': b'Qg', b'a': b'a', b'e': b'e', b'Ag': b'Ag', b'Vg': b'Vg', b'i': b'i', b'm': b'm',
+                b'wyz': b'w',
+                b'wyy': b'w', b'q': b'q', b'n]nt': b'n', b'vt_a': b'v', b'u': b'u', b'y': b'y', b'tt': b't',
+                b'jb': b'j', b'jd': b'j',
+                b'jv': b'j', b'rzw': b'r', b'Ug': b'Ug'}
+assert set(PKU_POSS) == set(PKU_POSS2to1.values())
+PKU_POSS += [b'BOS', b'EOS']
 PKU_TAGS = ['原因', '时间', '比较主体', '路径', '接事', '终点', '范围', '物量', '起始', '比较对象', '处所',
             '施事', '材料', '方式', '与事', '起点', '方向', '受事', '目的', '当事', '比较项', '结束', '比较客体', '对象',
             '工具', '结果', '内容', '比较结果', '系事', '同事', '时段']

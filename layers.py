@@ -1,4 +1,3 @@
-# coding: utf-8
 import numpy
 import theano
 import theano.sandbox.rng_mrg as rng_mrg
@@ -9,7 +8,7 @@ class EmbedLayer:
     def __init__(self, rng, n_in, n_out, window,
                  name, input_e, W_e=None):
         if isinstance(W_e, list):  # init embedding by list
-            W_e = numpy.asarray(W_e, dtype=theano.config.floatX)
+            W_e = numpy.asarray(W_e, dtype='float32')
         if isinstance(W_e, numpy.ndarray):  # init embedding by ndarray
             W_e = theano.shared(value=(W_e - W_e.min()) * 2.0 *
                                       numpy.sqrt(6. / (n_in + n_out)) /

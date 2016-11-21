@@ -6,6 +6,7 @@ import numpy
 import h5py
 import os
 import sys
+from collections import OrderedDict
 
 
 # This part should be modified before publish because not everyone has Chinese Tree Bank copyright.
@@ -158,7 +159,7 @@ class CpbDatasets(Datasets):  # 31235 2064 3604
         self.window = window
         self.max_dist = max_dist
         self.word2vecidx, self.vecs_idx, self.max_len = None, None, 0  # only for processing
-        self.word2idx = dict()
+        self.word2idx = OrderedDict()
         self.pos2idx, self.idx2pos = build_idx(POSS)
         self.role2idx = dict([(word, i) for i, word in enumerate(TAGGING)])
         self.datasets = []
@@ -169,7 +170,7 @@ class CpbDatasets(Datasets):  # 31235 2064 3604
 
     def read_sent__add_word(self, filename):
         line_num = 0
-        invalids = 0
+        zeroverb, multiverb = 0, 0
         ws_idx, ps_idx, rs_idx, vs_i, vs_idx = [], [], [], [], []
         num_seenwords = len(self.word2idx)
         with open(filename, 'rb') as fp:
@@ -184,8 +185,11 @@ class CpbDatasets(Datasets):  # 31235 2064 3604
                 r_idx = []  # sentag len-1
                 v_i = -1  # verb_i
                 for i, seg in enumerate(segs):
-                    items = seg.split(b'/')
-                    assert len(items) == 3
+                    role = seg[seg.rfind(b'/') + 1:]
+                    tok_pos = seg[:seg.rfind(b'/')]
+                    tok = tok_pos[:tok_pos.rfind(b'/')]
+                    pos = tok_pos[tok_pos.rfind(b'/') + 1:]
+                    items = [tok, pos, role]
                     if items[0] not in self.word2idx.keys():
                         if items[0] in self.word2vecidx.keys():
                             self.word2idx[items[0]] = num_seenwords
@@ -194,19 +198,25 @@ class CpbDatasets(Datasets):  # 31235 2064 3604
                     w_idx.append(self.word2idx.get(items[0], OOV_IDX))
                     p_idx.append(self.pos2idx[items[1]])
                     if items[-1] == b'rel':
-                        assert v_i == -1
-                        v_i = i
+                        if v_i == -1:
+                            v_i = i
+                        else:
+                            v_i = -2
+                            break
                     else:
                         r_idx.append(self.role2idx[items[-1]])
                 if v_i == -1 or len(r_idx) <= 1:
-                    invalids += 1
+                    zeroverb += 1
+                    continue
+                elif v_i == -2:
+                    multiverb += 1
                     continue
                 ws_idx.append(w_idx)
                 ps_idx.append(p_idx)
                 rs_idx.append(r_idx)
                 vs_i.append(v_i)
                 vs_idx.append(w_idx[v_i])
-        print('warning: zero verb sents: %d' % invalids)
+        print('lines: %d, zero verb sents: %d, multi verb sents: %d' % (line_num, zeroverb, multiverb))
         return ws_idx, ps_idx, vs_i, vs_idx, rs_idx
 
     def process(self):
@@ -228,6 +238,7 @@ class CpbDatasets(Datasets):  # 31235 2064 3604
                 for j, d in enumerate(dataset):
                     f.create_dataset('%d_%d' % (i, j), data=d)
             f.create_dataset('vecs', data=self.vecs)
+            f.create_dataset('word2idx', data=list(self.word2idx.keys()))
             print('all done.')
 
     def load(self):
@@ -240,6 +251,7 @@ class CpbDatasets(Datasets):  # 31235 2064 3604
             for i in range(3):
                 self.datasets.append([f['%d_%d' % (i, j)][:] for j in range(f['%d_len' % (i)][0])])
             self.vecs = f['vecs'][:]
+            self.word2idx = OrderedDict([(word, i) for i, word in enumerate(f['word2idx'][:])])
             print('all done.')
         return True, (self.datasets, self.vecs)
 
@@ -308,21 +320,75 @@ def PkuDatasets_preprocess():
 
 def pos_tag_cpb():
     in_files = [cpb_train_f, cpb_dev_f, cpb_test_f]
-    out_files = [cpb_pkupos_train_f, cpb_pkupos_dev_f, cpb_pkupos_test_f]
+    out_files = [cpb_train_f_seg, cpb_dev_f_seg, cpb_test_f_seg]
     for f1, f2 in zip(in_files, out_files):
+        if os.path.exists(f2): continue
         with open(f1, 'rb') as fin:
-            line = fin.readline().strip()
-            if not line:
-                break
-            segs = line.split(b' ')
-            for seg in segs:
-                items = seg.split(b'/')
-                assert len(items) == 3
+            with open(f2, 'wb') as fout:
+                while 1:
+                    line = fin.readline().strip()
+                    if not line:
+                        break
+                    segs = line.split(b' ')
+                    toks = []
+                    for seg in segs:
+                        items = seg.split(b'/')
+                        assert len(items) == 3
+                        toks.append(items[0])
+                    fout.write(b' '.join(toks) + b'\n')
+    print('cd ~/Data/wangzhen/bilsstm/text')
+    print('. run_test.sh cpbtrain.seg cpb_pkupos_train.pos')
+    print('. run_test.sh cpbdev.seg cpb_pkupos_dev.pos')
+    print('. run_test.sh cpbtest.seg cpb_pkupos_test.pos')
+    input('Are you sure all text has been tagged by pos-tagger?')
+    pos_in_files = [cpb_pkupos_train_f_pre, cpb_pkupos_dev_f_pre, cpb_pkupos_test_f_pre]
+    role_in_files = [cpb_train_f, cpb_dev_f, cpb_test_f]
+    out_files = [cpb_pkupos_train_f, cpb_pkupos_dev_f, cpb_pkupos_test_f]
+    for f1, f2, f3 in zip(pos_in_files, role_in_files, out_files):
+        with open(f1, 'rb') as pos_fin:
+            with open(f2, 'rb') as role_fin:
+                with open(f3, 'wb') as fout:
+                    while 1:
+                        pos_line = pos_fin.readline().strip()
+                        role_line = role_fin.readline().strip()
+                        if not role_line:
+                            break
+                        pos_segs = pos_line.split(b' ')
+                        pos_segs = pos_line.split(b' ')
+                        role_segs = role_line.split(b' ')
+                        new_segs = []
+                        for pos_seg, role_seg in zip(pos_segs, role_segs):
+                            pos_tok = pos_seg[:pos_seg.rfind(b'/') + 1]
+                            pos2 = pos_seg[pos_seg.rfind(b'/') + 1:]
+                            if pos2 in PKU_POSS2to1.keys():
+                                pos = PKU_POSS2to1[pos2]
+                            else:
+                                pos = str.encode(pos2.decode('utf-8')[0])
+                                print(pos2, pos)
+                            assert role_seg.startswith(pos_tok)
+                            new_segs.append(pos_tok + pos + role_seg[role_seg.rfind(b'/'):])
+                        fout.write(b' '.join(new_segs) + b'\n')
+
+
+def cpb2pku_w_idx_map(reverse):
+    cpb_data = CpbDatasets('cpb', 50, 3, 500, CPB_POSS, CPB_TAGGING, cpb_train_f, cpb_dev_f, cpb_test_f).get()
+    pku_data = CpbDatasets('pku', 50, 3, 500, PKU_POSS, PKU_TAGGING, pku_train_f, pku_dev_f, pku_test_f).get()
+    if reverse:
+        temp = cpb_data
+        cpb_data = pku_data
+        pku_data = temp
+    mapper = dict([(-3, -3), (-2, -2), (-1, -1)])
+    for word in cpb_data.word2idx:
+        mapper[cpb_data[word]] = pku_data.get(word, OOV_IDX)
+    return mapper
 
 
 if __name__ == '__main__':
     # data = CpbDatasets('cpb', 50, 3, 500, CPB_POSS, CPB_TAGGING, cpb_train_f, cpb_dev_f, cpb_test_f).get()
     # print(data[0][0][0].shape[1],data[0][1][0].shape[1],data[0][2][0].shape[1])
     # PkuDatasets_preprocess()
-    # data = CpbDatasets('pku', 50, 3, 500, PKU_POSS, PKU_TAGGING, pku_train_f, pku_dev_f, pku_test_f).get()
-    pos_tag_cpb()
+    data = CpbDatasets('pku', 50, 3, 500, PKU_POSS, PKU_TAGGING, pku_train_f, pku_dev_f, pku_test_f).get()
+    # pos_tag_cpb()
+    data = CpbDatasets('cpb_pkupos', 50, 3, 500, PKU_POSS, CPB_TAGGING, cpb_pkupos_train_f, cpb_pkupos_dev_f,
+                       cpb_pkupos_test_f).get()
+    #wordmap()
