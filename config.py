@@ -7,10 +7,15 @@ class Config:
     def __init__(self, argvs):
         self.data_name = 'cpb'
         self.model_type = 'basic'
-        self.test_from_epoch = 10
-        self.end_iter = 3000000
+        self.training = 0
+        self.test_from_epoch = 0
+        self.end_epoch = 30
         self.test_freq = 1000
-        self.learning_rate = 0.003
+        self.learning_rate = 0.005
+        if '-t' in argvs:
+            if argvs[argvs.index('-t') + 1] != '1':
+                self.dump_name = argvs[argvs.index('-dn') + 1]
+                self.loadinit()
         for i, argv in enumerate(argvs):
             if argv == '-n':
                 self.data_name = argvs[i + 1]
@@ -18,18 +23,15 @@ class Config:
             elif argv == '-m':
                 self.model_type = argvs[i + 1]
                 i += 1
+            elif argv == '-dn1':
+                self.dump_name1 = argvs[i + 1]
+                i += 1
             elif argv == '-dn':
                 self.dump_name = argvs[i + 1]
                 i += 1
             elif argv == '-t':
                 self.training = int(argvs[i + 1])
-                if self.training == 0:
-                    self.loadinit()
                 i += 1
-
-    def dump(self):
-        with open(self.dump_name + '.cfg', 'wb') as f:
-            pickle.dump(self, f)
 
     def myinit(self):
         if self.data_name == 'cpb':
@@ -64,7 +66,8 @@ class Config:
             self.NOT_EXIT_IDXS = CPB_NOT_EXIT_IDXS
 
     def dumpinit(self):
-        self.dump()
+        with open(self.dump_name + '.cfg', 'wb') as f:
+            pickle.dump(self, f)
         self.myinit()
 
     def loadinit(self):

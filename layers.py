@@ -112,7 +112,8 @@ class DropoutLayer:
     def __init__(self, p, input_d, use_noise):
         self.input_d = input_d
         self.trng = rng_mrg.MRG_RandomStreams(394857)
-        self.output_d = T.switch(use_noise, (input_d * self.trng.binomial(input_d.shape, p=p, n=1, )), input_d)
+        self.output_d = T.switch(use_noise, T.cast(input_d * self.trng.binomial(input_d.shape, p=p, n=1),
+                                                   dtype='float32'), input_d)
 
 
 class LSTMLayer:

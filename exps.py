@@ -50,21 +50,48 @@ def test_LSTM_GRU():
         print(func(x, mask))
 
 
-def get_cpb_std():
-    cfg = Config('-dn model/cpbbasic'.split())
-    cfg.dumpinit()
-    train_BasicNet(cfg)
+def get_cpb_basic():
+    print('cpb_basic')
+    # cfg = Config('-dn model/cpbbasic -n cpb -t 1'.split())
+    # cfg.test_from_epoch = 0
+    # cfg.learning_rate = 0.001
+    # cfg.test_freq = 100
+    # cfg.dumpinit()
+    # train_model(cfg)
     cfg = Config('-dn model/cpbbasic -t 0'.split())
-    test_BasicNet(cfg)
+    test_model(cfg)
 
 
 def get_cpb_pkupos_basic():
-    cfg = Config('-dn model/cpb_pkupos -n cpb_pkupos'.split())
+    cfg = Config('-dn model/cpb_pkupos -n cpb_pkupos -t 1'.split())
     cfg.dumpinit()
-    train_BasicNet(cfg)
+    train_model(cfg)
+
+
+def get_pku_basic():
+    print('pku_basic')
+    # cfg = Config('-dn model/pkubasic -n pku -t 2'.split())
+    # cfg.test_from_epoch = 0
+    # cfg.learning_rate = 0.001
+    # cfg.test_freq = 100
+    # cfg.dumpinit()
+    # train_model(cfg)
+    cfg = Config('-dn model/pkubasic -t 0'.split())
+    test_model(cfg)
+
+
+def get_progressive():
+    cfg = Config('-dn model/progressive -dn1 model/pkubasic -n cpb_pkupos -t 1'.split())
+    cfg.test_from_epoch = 10
+    cfg.learning_rate = 0.001
+    cfg.test_freq = 100
+    cfg.dumpinit()
+    train_model(cfg)
+    cfg = Config('-dn model/progressive -t 0'.split())
+    test_model(cfg)
 
 
 if __name__ == '__main__':
-    get_cpb_pkupos_basic()
-    # test_LSTM_GRU()
-    # print('pku'); train_BasicNet(CpbDatasets, 'pku', PKU_POSS, PKU_TAGGING, pku_train_f, pku_dev_f, pku_test_f, PKU_TRANS2, PKU_TRANS0, PKU_NOT_ENTRY_IDXS, PKU_NOT_EXIT_IDXS)
+    # get_pku_basic()
+    get_cpb_basic()
+    # get_progressive()

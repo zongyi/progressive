@@ -1,4 +1,4 @@
-from model import *
+from models import *
 from dataset_api import *
 import h5py
 import timeit
@@ -60,7 +60,45 @@ def cal_f1(result, answer, accu, TAGGING):
     return accu
 
 
-def train_BasicNet(cfg):
+def load_model(dump_name):
+    sys.stdout.write('loading model ... ')
+    with open(dump_name + '.pkl', 'rb') as f:
+        params = pickle.load(f)
+        try:
+            [e_i, sample_i, precision, recall, f1] = pickle.load(f)
+        except:
+            [e_i, sample_i, precision, recall, f1] = [0, 0, 0.0, 0.0, 0.0]
+    print('done.')
+    return params, e_i, sample_i, precision, recall, f1
+
+
+def test_prf(test_fun, net1_data, test_ws, test_ps, test_dists, test_vis, test_vs,
+             test_rs, test_lens, test_entry_exit_mask, TAGGING):
+    accu = [0, 0, 0]
+    for sample_j in range(test_ws.shape[1]):
+        inputs_data1 = [d[-test_lens[sample_j]:, sample_j] for d in net1_data if d is not None]
+        inputs_data = inputs_data1 + [test_ws[-test_lens[sample_j]:, sample_j, :],
+                                      test_ps[-test_lens[sample_j]:, sample_j, :],
+                                      test_dists[-test_lens[sample_j]:, sample_j],
+                                      test_vs[-test_lens[sample_j]:, sample_j],
+                                      test_entry_exit_mask[-test_lens[sample_j]:, sample_j, :],
+                                      test_vis[sample_j],
+                                      test_rs[-test_lens[sample_j]:, sample_j]]
+        output = test_fun(*(inputs_data))
+        accu = cal_f1(output, test_rs[-test_lens[sample_j]:, sample_j], accu, TAGGING)
+    precision = 0
+    recall = 0
+    f1 = 0
+    if accu[1] != 0:
+        precision = accu[0] / accu[1]
+    if accu[2] != 0:
+        recall = accu[0] / accu[2]
+    if precision + recall != 0:
+        f1 = 2 * precision * recall / (precision + recall)
+    return precision, recall, f1
+
+
+def train_model(cfg):
     print('building ...')
     worddim = 50
     window = 3
@@ -84,54 +122,92 @@ def train_BasicNet(cfg):
                                 cfg.NOT_EXIT_IDXS)
     test_entry_exit_mask = gen_masks(test_ws.shape[0], test_ws.shape[1], len(cfg.TAGGING), test_vis, test_lens,
                                      cfg.NOT_ENTRY_IDXS, cfg.NOT_EXIT_IDXS)
-
-    input_w = T.matrix('in_w', dtype='int32')
+    input_w = T.matrix('in_w1', dtype='int32')
     input_p = T.matrix('in_p', dtype='int32')
     input_dist = T.vector('in_dist', dtype='int32')
-    input_v = T.vector('in_v', dtype='int32')
+    input_v = T.vector('in_v1', dtype='int32')
     input_vi = T.scalar('in_vi', dtype='int32')
     input_entry_exit_mask = T.matrix('in_entry', dtype='float32')
     input_y = T.vector('in_y', dtype='int32')
-    inputs = [input_w, input_p, input_dist, input_v, input_entry_exit_mask, input_vi, input_y]
     p_n_out = 20
     dist_n_out = 20
     lin1_n_out = 200
     rnn_n_out = 200
     lin2_n_out = 100
+    concat_ad_n_out = 100
+    lin1_ad_n_out = 50
+    rnn_ad_n_out = 40
+    lin2_ad_n_out = 40
+    lin3_ad_n_out = 30
     l1_lr = numpy_floatX(0.0)
     l2_lr = numpy_floatX(0.0001)
     lr = numpy_floatX(cfg.learning_rate)
+    use_noise = theano.shared(numpy.asarray(1., dtype=theano.config.floatX))
     # TODO: relu 代替 tanh
-    net = BasicNet('basic', len(vecs), worddim, len(cfg.POSS), p_n_out, max_dist + 2, dist_n_out,
-                   lin1_n_out, rnn_n_out, lin2_n_out, len(cfg.TAGGING),
-                   window, cfg.TRANS2, cfg.TRANS0, inputs,
-                   W=[vecs, None, None, None, None, None, None,
-                      None, None, None, None, None, None])
+    if cfg.training == 2 or cfg.training == 0:
+        loaded_W, pre_e_i, pre_sample_i, pre_precision, pre_recall, pre_f1 = load_model(cfg.dump_name)
+    else:
+        loaded_W, pre_e_i, pre_sample_i, pre_precision, pre_recall, pre_f1 = None, 0, 0, 0.0, 0.0, 0.0
+    if cfg.model_type == 'basic':
+        inputs = [input_w, input_p, input_dist, input_v, input_entry_exit_mask, input_vi, input_y]
+        net = BasicNet('basic', use_noise, len(vecs), worddim, len(cfg.POSS), p_n_out, max_dist + 2, dist_n_out,
+                       lin1_n_out, rnn_n_out, lin2_n_out, len(cfg.TAGGING),
+                       window, cfg.TRANS2, cfg.TRANS0, inputs,
+                       W=[vecs, None, None, None, None, None, None,
+                          None, None, None, None, None, None] if loaded_W is None else loaded_W)
+        ws1, vs1, test_ws1, test_vs1 = None, None, None, None
+    else:
+        input_w1 = T.matrix('in_w1', dtype='int32')
+        input_v1 = T.vector('in_v1', dtype='int32')
+        inputs1 = [input_w1, input_p, input_dist, input_v1, input_entry_exit_mask, input_vi, input_y]
+        use_noise1 = theano.shared(numpy.asarray(0., dtype=theano.config.floatX))
+        loaded_W1, _, _, _, _, _ = load_model(cfg.dump_name1)
+        net1 = BasicNet('basic', use_noise1, len(vecs), worddim, len(cfg.POSS), p_n_out, max_dist + 2, dist_n_out,
+                        lin1_n_out, rnn_n_out, lin2_n_out, len(cfg.TAGGING),
+                        window, cfg.TRANS2, cfg.TRANS0, inputs1,
+                        W=loaded_W1)
+        inputs2 = [input_w, input_p, input_dist, input_v, input_entry_exit_mask, input_vi, input_y]
+        net = Progressive('progressive', net1, use_noise, len(vecs), worddim, len(cfg.POSS), p_n_out, max_dist + 2,
+                          dist_n_out,
+                          lin1_n_out, rnn_n_out, lin2_n_out, len(cfg.TAGGING),
+                          concat_ad_n_out, lin1_ad_n_out, rnn_ad_n_out, lin2_ad_n_out, lin3_ad_n_out,
+                          window, cfg.TRANS2, cfg.TRANS0, inputs2,
+                          W=[vecs, None, None, None, None, None, None,
+                             None, None, None, None, None, None, None, None, None,
+                             None] if loaded_W is None else loaded_W)
+        inputs = [input_w1, input_v1, input_w, input_p, input_dist, input_v, input_entry_exit_mask, input_vi, input_y]
+        mapper = cpb2pku_mapper(False)
+        ws1, vs1 = map_cpb2pku(mapper, ws, vs, lens)
+        test_ws1, test_vs1 = map_cpb2pku(mapper, test_ws, test_vs, test_lens)
     nll_cost = net.cal_cost(input_y, l1_lr, l2_lr)
     gparams = [T.grad(nll_cost, param) for param in net.params]
     updates = [(param, param - lr * gparam) for param, gparam in zip(net.params, gparams)]
     train_fun = theano.function(inputs=inputs, outputs=nll_cost, updates=updates)
     test_fun = theano.function(inputs=inputs, outputs=net.y_pred, on_unused_input='ignore')
-    max_f1 = 0.0
+    max_f1 = pre_f1
     iter = 0
-    done_loop = False
     print('training ...')
     start_time = timeit.default_timer()
     for e_i in range(20):
-        if done_loop: break
+        if e_i >= cfg.end_epoch: break
+        if e_i < pre_e_i: continue
         for sample_i in range(ws.shape[1]):
-            if iter >= cfg.end_iter:
-                done_loop = True
-                break
-            cost = train_fun(ws[-lens[sample_i]:, sample_i, :],
-                             ps[-lens[sample_i]:, sample_i, :],
-                             dists[-lens[sample_i]:, sample_i],
-                             vs[-lens[sample_i]:, sample_i],
-                             entry_exit_mask[-lens[sample_i]:, sample_i],
-                             vis[sample_i],
-                             rs[-lens[sample_i]:, sample_i])
-            if e_i >= cfg.test_from_epoch and sample_i % cfg.test_freq == 0:
-                precision, recall, f1 = test_prf(test_fun, test_ws, test_ps, test_dists,
+            if e_i == pre_e_i and sample_i <= pre_sample_i: continue
+            if cfg.model_type == 'progressive':
+                inputs_data1 = [ws1[-lens[sample_i]:, sample_i, :], vs1[-lens[sample_i]:, sample_i]]
+            else:
+                inputs_data1 = []
+            inputs_data = inputs_data1 + [ws[-lens[sample_i]:, sample_i, :],
+                                          ps[-lens[sample_i]:, sample_i, :],
+                                          dists[-lens[sample_i]:, sample_i],
+                                          vs[-lens[sample_i]:, sample_i],
+                                          entry_exit_mask[-lens[sample_i]:, sample_i],
+                                          vis[sample_i],
+                                          rs[-lens[sample_i]:, sample_i]]
+            cost = train_fun(*(inputs_data))
+            if (e_i >= cfg.test_from_epoch and sample_i % cfg.test_freq == 0) or sample_i == ws.shape[1] - 1:
+                use_noise.set_value(0.0)
+                precision, recall, f1 = test_prf(test_fun, [test_ws1, test_vs1], test_ws, test_ps, test_dists,
                                                  test_vis, test_vs, test_rs, test_lens,
                                                  test_entry_exit_mask, cfg.TAGGING)
                 print(e_i, sample_i, precision, recall, f1, '  ', cost, 'max hit!' if f1 > max_f1 else '')
@@ -139,45 +215,17 @@ def train_BasicNet(cfg):
                     sys.stdout.write('dumping to %s.pkl ...' % cfg.dump_name)
                     with open(cfg.dump_name + '.pkl', 'wb') as f:
                         pickle.dump(net.params, f)
+                        pickle.dump([e_i, sample_i, precision, recall, f1], f)
                     print(' done.')
                 max_f1 = max(f1, max_f1)
+                use_noise.set_value(1.0)
             iter += 1
         end_time = timeit.default_timer()
-        print('%.1f s' % ((end_time - start_time) / 60.))
+        print('%.1f min' % ((end_time - start_time) / 60.))
         start_time = end_time
 
 
-def load_model(cfg):
-    with open(cfg.dump_name + '.pkl', 'rb') as f:
-        params = pickle.load(f)
-    return params
-
-
-def test_prf(test_fun, test_ws, test_ps, test_dists, test_vis, test_vs,
-             test_rs, test_lens, test_entry_exit_mask, TAGGING):
-    accu = [0, 0, 0]
-    for sample_j in range(test_ws.shape[1]):
-        output = test_fun(test_ws[-test_lens[sample_j]:, sample_j, :],
-                          test_ps[-test_lens[sample_j]:, sample_j, :],
-                          test_dists[-test_lens[sample_j]:, sample_j],
-                          test_vs[-test_lens[sample_j]:, sample_j],
-                          test_entry_exit_mask[-test_lens[sample_j]:, sample_j, :],
-                          test_vis[sample_j],
-                          test_rs[-test_lens[sample_j]:, sample_j])
-        accu = cal_f1(output, test_rs[-test_lens[sample_j]:, sample_j], accu, TAGGING)
-    precision = 0
-    recall = 0
-    f1 = 0
-    if accu[1] != 0:
-        precision = accu[0] / accu[1]
-    if accu[2] != 0:
-        recall = accu[0] / accu[2]
-    if precision + recall != 0:
-        f1 = 2 * precision * recall / (precision + recall)
-    return precision, recall, f1
-
-
-def test_BasicNet(cfg):
+def test_model(cfg):
     worddim = 50
     window = 3
     max_dist = 500
@@ -195,20 +243,50 @@ def test_BasicNet(cfg):
     input_vi = T.scalar('in_vi', dtype='int32')
     input_entry_exit_mask = T.matrix('in_entry', dtype='float32')
     input_y = T.vector('in_y', dtype='int32')
-    inputs = [input_w, input_p, input_dist, input_v, input_entry_exit_mask, input_vi, input_y]
     p_n_out = 20
     dist_n_out = 20
     lin1_n_out = 200
     rnn_n_out = 200
     lin2_n_out = 100
-    net = BasicNet('basic', len(vecs), worddim, len(cfg.POSS), p_n_out, max_dist + 2, dist_n_out,
-                   lin1_n_out, rnn_n_out, lin2_n_out, len(cfg.TAGGING),
-                   window, cfg.TRANS2, cfg.TRANS0, inputs,
-                   W=load_model(cfg))
+    concat_ad_n_out = 100
+    lin1_ad_n_out = 50
+    rnn_ad_n_out = 40
+    lin2_ad_n_out = 40
+    lin3_ad_n_out = 30
+    use_noise = theano.shared(numpy.asarray(0., dtype=theano.config.floatX))
+    loaded_W, _, _, _, _, _ = load_model(cfg.dump_name)
+    if cfg.model_type == 'basic':
+        inputs = [input_w, input_p, input_dist, input_v, input_entry_exit_mask, input_vi, input_y]
+        net = BasicNet('basic', use_noise, len(vecs), worddim, len(cfg.POSS), p_n_out, max_dist + 2, dist_n_out,
+                       lin1_n_out, rnn_n_out, lin2_n_out, len(cfg.TAGGING),
+                       window, cfg.TRANS2, cfg.TRANS0, inputs,
+                       W=loaded_W)
+        ws1, vs1, test_ws1, test_vs1 = None, None, None, None
+    else:
+        input_w1 = T.matrix('in_w1', dtype='int32')
+        input_v1 = T.vector('in_v1', dtype='int32')
+        inputs1 = [input_w1, input_p, input_dist, input_v1, input_entry_exit_mask, input_vi, input_y]
+        use_noise1 = theano.shared(numpy.asarray(0., dtype=theano.config.floatX))
+        loaded_W1, _, _, _, _, _ = load_model(cfg.dump_name1)
+        net1 = BasicNet('basic', use_noise1, len(vecs), worddim, len(cfg.POSS), p_n_out, max_dist + 2, dist_n_out,
+                        lin1_n_out, rnn_n_out, lin2_n_out, len(cfg.TAGGING),
+                        window, cfg.TRANS2, cfg.TRANS0, inputs1,
+                        W=loaded_W1)
+        inputs2 = [input_w, input_p, input_dist, input_v, input_entry_exit_mask, input_vi, input_y]
+        net = Progressive('progressive', net1, use_noise, len(vecs), worddim, len(cfg.POSS), p_n_out, max_dist + 2,
+                          dist_n_out,
+                          lin1_n_out, rnn_n_out, lin2_n_out, len(cfg.TAGGING),
+                          concat_ad_n_out, lin1_ad_n_out, rnn_ad_n_out, lin2_ad_n_out, lin3_ad_n_out,
+                          window, cfg.TRANS2, cfg.TRANS0, inputs2,
+                          W=loaded_W)
+        inputs = [input_w1, input_v1, input_w, input_p, input_dist, input_v, input_entry_exit_mask, input_vi, input_y]
+        mapper = cpb2pku_mapper(False)
+        test_ws1, test_vs1 = map_cpb2pku(mapper, test_ws, test_vs, test_lens)
     test_fun = theano.function(inputs=inputs, outputs=net.y_pred, on_unused_input='ignore')
     start_time = timeit.default_timer()
-    precision, recall, f1 = test_prf(test_fun, test_ws, test_ps, test_dists, test_vis, test_vs, test_rs, test_lens,
+    precision, recall, f1 = test_prf(test_fun, [test_ws1, test_vs1], test_ws, test_ps, test_dists, test_vis, test_vs,
+                                     test_rs, test_lens,
                                      test_entry_exit_mask, cfg.TAGGING)
     end_time = timeit.default_timer()
     print(precision, recall, f1)
-    print('%.1f s' % ((end_time - start_time) / 60.))
+    print('%.1f min' % ((end_time - start_time) / 60.))

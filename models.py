@@ -3,7 +3,7 @@ from const import *
 
 
 class BasicNet(object):
-    def __init__(self, name, w_emb_n_in, w_emb_n_out, p_emb_n_in, p_emb_n_out, dist_emb_n_in, dist_emb_n_out,
+    def __init__(self, name, use_noise, w_emb_n_in, w_emb_n_out, p_emb_n_in, p_emb_n_out, dist_emb_n_in, dist_emb_n_out,
                  lin1_n_out, rnn_n_out, lin2_n_out, lin3_n_out,
                  window, TRANS2, TRANS0,
                  inputs, W):
@@ -20,9 +20,9 @@ class BasicNet(object):
         concat = T.concatenate([w_emb_layer.output_e, p_emb_layer.output_e,
                                 dist_emb_layer.output_e, v_emb_layer.output_e], axis=w_emb_layer.output_e.ndim - 1)
         self.concat_n_out = window * (w_emb_n_out + p_emb_n_out) + dist_emb_n_out + w_emb_n_out
-        # TODO: add dropout
+        dropout_layer = DropoutLayer(0.5, concat, use_noise)  # when use_noise.get_value() == 1, use dropout
         lin1_layer = LinearLayer(rng, self.concat_n_out, lin1_n_out,
-                                 name + 'lin1', concat, 'none', W=W[wi], b=W[wi + 1])
+                                 name + 'lin1', dropout_layer.output_d, 'none', W=W[wi], b=W[wi + 1])
         wi += 2
         rnn_layer = LSTMLayer(rng, lin1_n_out, rnn_n_out, lin1_layer.output_l, None, True,
                               name + 'rnn', 'none', W[wi], W[wi + 1], W[wi + 2])
@@ -90,7 +90,7 @@ class BasicNet(object):
 
 class Progressive:
     def __init__(self, name, net1,
-                 w_emb_n_in, w_emb_n_out, p_emb_n_in, p_emb_n_out, dist_emb_n_in, dist_emb_n_out,
+                 use_noise, w_emb_n_in, w_emb_n_out, p_emb_n_in, p_emb_n_out, dist_emb_n_in, dist_emb_n_out,
                  lin1_n_out, rnn_n_out, lin2_n_out, lin3_n_out,
                  concat_ad_n_out, lin1_ad_n_out, rnn_ad_n_out, lin2_ad_n_out, lin3_ad_n_out,
                  window, TRANS2, TRANS0, inputs, W):
@@ -127,10 +127,9 @@ class Progressive:
         concat = T.concatenate([w_emb_layer.output_e, p_emb_layer.output_e,
                                 dist_emb_layer.output_e, v_emb_layer.output_e], axis=w_emb_layer.output_e.ndim - 1)
         self.concat_n_out = window * (w_emb_n_out + p_emb_n_out) + dist_emb_n_out + w_emb_n_out
-
-        # TODO: add dropout
+        dropout_layer = DropoutLayer(0.5, concat, use_noise)  # when use_noise.get_value() == 1, use dropout
         lin1_layer = LinearLayer(rng, self.concat_n_out + concat_ad_n_out, lin1_n_out, name + 'lin1',
-                                 T.concatenate([concat, concat_ad_layer.output_l], axis=1),
+                                 T.concatenate([dropout_layer.output_d, concat_ad_layer.output_l], axis=1),
                                  'none', W=W[wi], b=W[wi + 1])
         wi += 2
         rnn_layer = LSTMLayer(rng, lin1_n_out + lin1_ad_n_out, rnn_n_out,

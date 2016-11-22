@@ -370,7 +370,7 @@ def pos_tag_cpb():
                         fout.write(b' '.join(new_segs) + b'\n')
 
 
-def cpb2pku_w_idx_map(reverse):
+def cpb2pku_mapper(reverse):
     cpb_data = CpbDatasets('cpb', 50, 3, 500, CPB_POSS, CPB_TAGGING, cpb_train_f, cpb_dev_f, cpb_test_f).get()
     pku_data = CpbDatasets('pku', 50, 3, 500, PKU_POSS, PKU_TAGGING, pku_train_f, pku_dev_f, pku_test_f).get()
     if reverse:
@@ -378,10 +378,20 @@ def cpb2pku_w_idx_map(reverse):
         cpb_data = pku_data
         pku_data = temp
     mapper = dict([(-3, -3), (-2, -2), (-1, -1)])
-    for word in cpb_data.word2idx:
+    for word in cpb_data.word2idx.keys():
         mapper[cpb_data[word]] = pku_data.get(word, OOV_IDX)
     return mapper
 
+
+def map_cpb2pku(mapper, ws, vs, lens):
+    ws1 = numpy.zeros_like(ws, dtype='int32')
+    vs1 = numpy.zeros_like(vs, dtype='int32')
+    for sample_i, sent_len in enumerate(lens):
+        for i in range(1, sent_len + 1):
+            vs1[-i, sample_i] = mapper[vs[-i, sample_i]]
+            for win_i in ws.shape[2]:
+                ws1[-i, sample_i, win_i] = mapper[ws[-i, sample_i, win_i]]
+    return ws1, vs1
 
 if __name__ == '__main__':
     # data = CpbDatasets('cpb', 50, 3, 500, CPB_POSS, CPB_TAGGING, cpb_train_f, cpb_dev_f, cpb_test_f).get()
