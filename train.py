@@ -1,8 +1,7 @@
 from models import *
 from dataset_api import *
-import h5py
 import timeit
-
+import pickle
 floatX = theano.config.floatX
 
 
@@ -68,7 +67,7 @@ def load_model(dump_name):
             [e_i, sample_i, precision, recall, f1] = pickle.load(f)
         except:
             [e_i, sample_i, precision, recall, f1] = [0, 0, 0.0, 0.0, 0.0]
-    print('done.')
+    print(e_i, sample_i, precision, recall, f1)
     return params, e_i, sample_i, precision, recall, f1
 
 
@@ -122,23 +121,13 @@ def train_model(cfg):
                                 cfg.NOT_EXIT_IDXS)
     test_entry_exit_mask = gen_masks(test_ws.shape[0], test_ws.shape[1], len(cfg.TAGGING), test_vis, test_lens,
                                      cfg.NOT_ENTRY_IDXS, cfg.NOT_EXIT_IDXS)
-    input_w = T.matrix('in_w1', dtype='int32')
+    input_w = T.matrix('in_w', dtype='int32')
     input_p = T.matrix('in_p', dtype='int32')
     input_dist = T.vector('in_dist', dtype='int32')
-    input_v = T.vector('in_v1', dtype='int32')
+    input_v = T.vector('in_v', dtype='int32')
     input_vi = T.scalar('in_vi', dtype='int32')
     input_entry_exit_mask = T.matrix('in_entry', dtype='float32')
     input_y = T.vector('in_y', dtype='int32')
-    p_n_out = 20
-    dist_n_out = 20
-    lin1_n_out = 200
-    rnn_n_out = 200
-    lin2_n_out = 100
-    concat_ad_n_out = 100
-    lin1_ad_n_out = 50
-    rnn_ad_n_out = 40
-    lin2_ad_n_out = 40
-    lin3_ad_n_out = 30
     l1_lr = numpy_floatX(0.0)
     l2_lr = numpy_floatX(0.0001)
     lr = numpy_floatX(cfg.learning_rate)
@@ -146,49 +135,69 @@ def train_model(cfg):
     # TODO: relu 代替 tanh
     if cfg.training == 2 or cfg.training == 0:
         loaded_W, pre_e_i, pre_sample_i, pre_precision, pre_recall, pre_f1 = load_model(cfg.dump_name)
+        print([w.eval().shape for w in loaded_W])
     else:
         loaded_W, pre_e_i, pre_sample_i, pre_precision, pre_recall, pre_f1 = None, 0, 0, 0.0, 0.0, 0.0
     if cfg.model_type == 'basic':
+        print('basic net building ...')
         inputs = [input_w, input_p, input_dist, input_v, input_entry_exit_mask, input_vi, input_y]
-        net = BasicNet('basic', use_noise, len(vecs), worddim, len(cfg.POSS), p_n_out, max_dist + 2, dist_n_out,
-                       lin1_n_out, rnn_n_out, lin2_n_out, len(cfg.TAGGING),
+        net = BasicNet('basic', use_noise, len(vecs), worddim if cfg.use_vecs else cfg.w_n_out, len(cfg.POSS),
+                       cfg.p_n_out, max_dist + 2, cfg.dist_n_out,
+                       cfg.lin1_n_out, cfg.rnn_n_out, cfg.lin2_n_out, len(cfg.TAGGING),
                        window, cfg.TRANS2, cfg.TRANS0, inputs,
-                       W=[vecs, None, None, None, None, None, None,
-                          None, None, None, None, None, None] if loaded_W is None else loaded_W)
+                       W=([vecs if cfg.use_vecs else None] +
+                          ([None] if cfg.p_n_out else []) + [None, None, None, None, None, None, None,
+                                                             None, None, None, None]) if loaded_W is None else loaded_W)
         ws1, vs1, test_ws1, test_vs1 = None, None, None, None
     else:
+        print('progressive net building ...')
         input_w1 = T.matrix('in_w1', dtype='int32')
         input_v1 = T.vector('in_v1', dtype='int32')
         inputs1 = [input_w1, input_p, input_dist, input_v1, input_entry_exit_mask, input_vi, input_y]
         use_noise1 = theano.shared(numpy.asarray(0., dtype=theano.config.floatX))
         loaded_W1, _, _, _, _, _ = load_model(cfg.dump_name1)
-        net1 = BasicNet('basic', use_noise1, len(vecs), worddim, len(cfg.POSS), p_n_out, max_dist + 2, dist_n_out,
-                        lin1_n_out, rnn_n_out, lin2_n_out, len(cfg.TAGGING),
+
+        cpb = CpbDatasets('cpb', 50, 3, 500, CPB_POSS, CPB_TAGGING, cpb_train_f, cpb_dev_f, cpb_test_f)
+        pku = CpbDatasets('pku', 50, 3, 500, PKU_POSS, PKU_TAGGING, pku_train_f, pku_dev_f, pku_test_f)
+        cpb_data, cpb_vecs = cpb.get()  # this line is to init cpb.word2idx
+        pku_data, pku_vecs = pku.get()
+        net1 = BasicNet('basic', use_noise1, len(pku_vecs), worddim, len(cfg.POSS), cfg.p_n_out, max_dist + 2,
+                        cfg.dist_n_out,
+                        cfg.lin1_n_out, cfg.rnn_n_out, cfg.lin2_n_out, len(cfg.TAGGING1),
                         window, cfg.TRANS2, cfg.TRANS0, inputs1,
                         W=loaded_W1)
         inputs2 = [input_w, input_p, input_dist, input_v, input_entry_exit_mask, input_vi, input_y]
-        net = Progressive('progressive', net1, use_noise, len(vecs), worddim, len(cfg.POSS), p_n_out, max_dist + 2,
-                          dist_n_out,
-                          lin1_n_out, rnn_n_out, lin2_n_out, len(cfg.TAGGING),
-                          concat_ad_n_out, lin1_ad_n_out, rnn_ad_n_out, lin2_ad_n_out, lin3_ad_n_out,
+        net = Progressive('progressive', net1, use_noise, len(vecs), worddim if cfg.use_vecs else cfg.w_n_out_new,
+                          len(cfg.POSS), cfg.p_n_out_new, max_dist + 2, cfg.dist_n_out_new,
+                          cfg.lin1_n_out_new, cfg.rnn_n_out_new, cfg.lin2_n_out_new, len(cfg.TAGGING),
+                          cfg.is_concat, cfg.concat_n_out_ad, cfg.lin1_n_out_ad, cfg.rnn_n_out_ad,
                           window, cfg.TRANS2, cfg.TRANS0, inputs2,
-                          W=[vecs, None, None, None, None, None, None,
-                             None, None, None, None, None, None, None, None, None,
-                             None] if loaded_W is None else loaded_W)
+                          W=(([None, None] if cfg.concat_n_out_ad else []) +
+                             ([None, None] if cfg.lin1_n_out_ad else []) +
+                             ([None, None] if cfg.rnn_n_out_ad else []) +  # None, None, None, None, None, None,
+                             [vecs if cfg.use_vecs else None, None, None, None, None, None, None, None,
+                              None, None, None, None, None]) if loaded_W is None else loaded_W)
         inputs = [input_w1, input_v1, input_w, input_p, input_dist, input_v, input_entry_exit_mask, input_vi, input_y]
-        mapper = cpb2pku_mapper(False)
+        mapper = cpb2pku_mapper(cpb, pku)
         ws1, vs1 = map_cpb2pku(mapper, ws, vs, lens)
         test_ws1, test_vs1 = map_cpb2pku(mapper, test_ws, test_vs, test_lens)
     nll_cost = net.cal_cost(input_y, l1_lr, l2_lr)
     gparams = [T.grad(nll_cost, param) for param in net.params]
     updates = [(param, param - lr * gparam) for param, gparam in zip(net.params, gparams)]
-    train_fun = theano.function(inputs=inputs, outputs=nll_cost, updates=updates)
+    train_fun = theano.function(inputs=inputs, outputs=nll_cost, updates=updates, on_unused_input='warn')
     test_fun = theano.function(inputs=inputs, outputs=net.y_pred, on_unused_input='ignore')
+    if cfg.training == 2 and pre_f1 == .0:
+        use_noise.set_value(0.0)
+        pre_precision, pre_recall, pre_f1 = test_prf(test_fun, [test_ws1, test_vs1], test_ws, test_ps, test_dists,
+                                                     test_vis, test_vs, test_rs, test_lens,
+                                                     test_entry_exit_mask, cfg.TAGGING)
+        print(pre_precision, pre_recall, pre_f1)
+        use_noise.set_value(1.0)
     max_f1 = pre_f1
     iter = 0
     print('training ...')
     start_time = timeit.default_timer()
-    for e_i in range(20):
+    for e_i in range(200):
         if e_i >= cfg.end_epoch: break
         if e_i < pre_e_i: continue
         for sample_i in range(ws.shape[1]):
@@ -212,81 +221,13 @@ def train_model(cfg):
                                                  test_entry_exit_mask, cfg.TAGGING)
                 print(e_i, sample_i, precision, recall, f1, '  ', cost, 'max hit!' if f1 > max_f1 else '')
                 if f1 > max_f1:
-                    sys.stdout.write('dumping to %s.pkl ...' % cfg.dump_name)
                     with open(cfg.dump_name + '.pkl', 'wb') as f:
                         pickle.dump(net.params, f)
                         pickle.dump([e_i, sample_i, precision, recall, f1], f)
-                    print(' done.')
+                    print('dumped to %s.pkl' % cfg.dump_name)
                 max_f1 = max(f1, max_f1)
                 use_noise.set_value(1.0)
             iter += 1
         end_time = timeit.default_timer()
         print('%.1f min' % ((end_time - start_time) / 60.))
         start_time = end_time
-
-
-def test_model(cfg):
-    worddim = 50
-    window = 3
-    max_dist = 500
-    datasets, vecs = CpbDatasets(cfg.data_name, worddim, window, max_dist,
-                                 cfg.POSS, cfg.TAGGING, cfg.train_f, cfg.dev_f, cfg.test_f).get()
-    train_set, dev_set, test_set = datasets
-    test_ws, test_ps, test_dists, test_vis, test_vs, test_rs, test_lens = test_set
-    test_entry_exit_mask = gen_masks(test_ws.shape[0], test_ws.shape[1], len(cfg.TAGGING), test_vis, test_lens,
-                                     cfg.NOT_ENTRY_IDXS, cfg.NOT_EXIT_IDXS)
-
-    input_w = T.matrix('in_w', dtype='int32')
-    input_p = T.matrix('in_p', dtype='int32')
-    input_dist = T.vector('in_dist', dtype='int32')
-    input_v = T.vector('in_v', dtype='int32')
-    input_vi = T.scalar('in_vi', dtype='int32')
-    input_entry_exit_mask = T.matrix('in_entry', dtype='float32')
-    input_y = T.vector('in_y', dtype='int32')
-    p_n_out = 20
-    dist_n_out = 20
-    lin1_n_out = 200
-    rnn_n_out = 200
-    lin2_n_out = 100
-    concat_ad_n_out = 100
-    lin1_ad_n_out = 50
-    rnn_ad_n_out = 40
-    lin2_ad_n_out = 40
-    lin3_ad_n_out = 30
-    use_noise = theano.shared(numpy.asarray(0., dtype=theano.config.floatX))
-    loaded_W, _, _, _, _, _ = load_model(cfg.dump_name)
-    if cfg.model_type == 'basic':
-        inputs = [input_w, input_p, input_dist, input_v, input_entry_exit_mask, input_vi, input_y]
-        net = BasicNet('basic', use_noise, len(vecs), worddim, len(cfg.POSS), p_n_out, max_dist + 2, dist_n_out,
-                       lin1_n_out, rnn_n_out, lin2_n_out, len(cfg.TAGGING),
-                       window, cfg.TRANS2, cfg.TRANS0, inputs,
-                       W=loaded_W)
-        ws1, vs1, test_ws1, test_vs1 = None, None, None, None
-    else:
-        input_w1 = T.matrix('in_w1', dtype='int32')
-        input_v1 = T.vector('in_v1', dtype='int32')
-        inputs1 = [input_w1, input_p, input_dist, input_v1, input_entry_exit_mask, input_vi, input_y]
-        use_noise1 = theano.shared(numpy.asarray(0., dtype=theano.config.floatX))
-        loaded_W1, _, _, _, _, _ = load_model(cfg.dump_name1)
-        net1 = BasicNet('basic', use_noise1, len(vecs), worddim, len(cfg.POSS), p_n_out, max_dist + 2, dist_n_out,
-                        lin1_n_out, rnn_n_out, lin2_n_out, len(cfg.TAGGING),
-                        window, cfg.TRANS2, cfg.TRANS0, inputs1,
-                        W=loaded_W1)
-        inputs2 = [input_w, input_p, input_dist, input_v, input_entry_exit_mask, input_vi, input_y]
-        net = Progressive('progressive', net1, use_noise, len(vecs), worddim, len(cfg.POSS), p_n_out, max_dist + 2,
-                          dist_n_out,
-                          lin1_n_out, rnn_n_out, lin2_n_out, len(cfg.TAGGING),
-                          concat_ad_n_out, lin1_ad_n_out, rnn_ad_n_out, lin2_ad_n_out, lin3_ad_n_out,
-                          window, cfg.TRANS2, cfg.TRANS0, inputs2,
-                          W=loaded_W)
-        inputs = [input_w1, input_v1, input_w, input_p, input_dist, input_v, input_entry_exit_mask, input_vi, input_y]
-        mapper = cpb2pku_mapper(False)
-        test_ws1, test_vs1 = map_cpb2pku(mapper, test_ws, test_vs, test_lens)
-    test_fun = theano.function(inputs=inputs, outputs=net.y_pred, on_unused_input='ignore')
-    start_time = timeit.default_timer()
-    precision, recall, f1 = test_prf(test_fun, [test_ws1, test_vs1], test_ws, test_ps, test_dists, test_vis, test_vs,
-                                     test_rs, test_lens,
-                                     test_entry_exit_mask, cfg.TAGGING)
-    end_time = timeit.default_timer()
-    print(precision, recall, f1)
-    print('%.1f min' % ((end_time - start_time) / 60.))

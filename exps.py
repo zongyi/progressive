@@ -1,6 +1,4 @@
-from dataset_api import *
 from train import *
-import pickle
 from config import Config
 
 floatX = theano.config.floatX
@@ -52,46 +50,104 @@ def test_LSTM_GRU():
 
 def get_cpb_basic():
     print('cpb_basic')
-    # cfg = Config('-dn model/cpbbasic -n cpb -t 1'.split())
-    # cfg.test_from_epoch = 0
-    # cfg.learning_rate = 0.001
-    # cfg.test_freq = 100
-    # cfg.dumpinit()
-    # train_model(cfg)
-    cfg = Config('-dn model/cpbbasic -t 0'.split())
-    test_model(cfg)
+    cfg = Config('-dn model/cpbbasic -n cpb -t 1'.split())
+    cfg.test_from_epoch = 0
+    cfg.learning_rate = 0.001
+    cfg.test_freq = 1000
+    cfg.dumpinit()
+    train_model(cfg)
+    cfg = Config('-dn model/cpbbasic2 -t 0'.split())
 
 
 def get_cpb_pkupos_basic():
-    cfg = Config('-dn model/cpb_pkupos -n cpb_pkupos -t 1'.split())
+    print('cpb_pkupos')
+    cfg = Config('-dn model/cpb_pkupos -dn1 model/pkubasic -n cpb_pkupos -t 2'.split())
+    cfg.test_from_epoch = 0
+    cfg.learning_rate = 0.001
+    cfg.test_freq = 1000
+    cfg.end_epoch = 30
     cfg.dumpinit()
     train_model(cfg)
 
 
 def get_pku_basic():
     print('pku_basic')
-    # cfg = Config('-dn model/pkubasic -n pku -t 2'.split())
-    # cfg.test_from_epoch = 0
-    # cfg.learning_rate = 0.001
-    # cfg.test_freq = 100
-    # cfg.dumpinit()
-    # train_model(cfg)
-    cfg = Config('-dn model/pkubasic -t 0'.split())
-    test_model(cfg)
-
-
-def get_progressive():
-    cfg = Config('-dn model/progressive -dn1 model/pkubasic -n cpb_pkupos -t 1'.split())
-    cfg.test_from_epoch = 10
+    cfg = Config('-dn model/pkubasic -n pku -t 2'.split())
+    cfg.test_from_epoch = 0
     cfg.learning_rate = 0.001
     cfg.test_freq = 100
     cfg.dumpinit()
     train_model(cfg)
-    cfg = Config('-dn model/progressive -t 0'.split())
-    test_model(cfg)
+
+
+def get_progressive():
+    cfg = Config('-dn model/progressive -dn1 model/pkubasic -m progressive -n cpb_pkupos -t 2'.split())
+    cfg.test_from_epoch = 20
+    cfg.learning_rate = 0.001
+    cfg.test_freq = 1000
+    cfg.end_epoch = 50
+    import socket
+    print(socket.gethostname())
+    if socket.gethostname() == 'acl221':  # fake cpbbasic
+        cfg.test_from_epoch = 10
+        cfg.is_concat = True
+        cfg.use_vecs = True
+        cfg.dump_name = 'prog_fake_cpbbasic'
+        cfg.learning_rate = 0.002
+        cfg.p_n_out_new = cfg.p_n_out
+        cfg.dist_n_out_new = cfg.dist_n_out
+        cfg.lin1_n_out_new = cfg.lin1_n_out
+        cfg.rnn_n_out_new = cfg.rnn_n_out
+        cfg.lin2_n_out_new = cfg.lin2_n_out
+    else:  # local sum
+        cfg.use_vecs = True
+        cfg.rnn_n_out_ad = cfg.rnn_n_out
+        cfg.p_n_out_new = cfg.p_n_out
+        cfg.dist_n_out_new = cfg.dist_n_out
+        cfg.lin1_n_out_new = cfg.lin1_n_out
+        cfg.rnn_n_out_new = cfg.rnn_n_out
+        cfg.lin2_n_out_new = cfg.lin2_n_out
+        cfg.end_epoch = 70
+    cfg.dumpinit()
+    train_model(cfg)
+
+
+def get_progressive_concat():
+    cfg = Config('-dn model/prog_concat -dn1 model/pkubasic -m progressive -n cpb_pkupos -t 2'.split())
+    cfg.test_from_epoch = 6
+    cfg.learning_rate = 0.002
+    cfg.test_freq = 1000
+    cfg.end_epoch = 50
+    import socket
+    print(socket.gethostname())
+    if socket.gethostname() == 'acl221':  # concat
+        cfg.is_concat = True
+        cfg.use_vecs = True
+        cfg.rnn_n_out_ad = 10
+        cfg.p_n_out_new = cfg.p_n_out
+        cfg.dist_n_out_new = cfg.dist_n_out
+        cfg.lin1_n_out_new = cfg.lin1_n_out
+        cfg.rnn_n_out_new = cfg.rnn_n_out - 10
+        cfg.lin2_n_out_new = cfg.lin2_n_out
+    else:  # local concat
+        cfg.is_concat = True
+        cfg.use_vecs = True
+        cfg.lin1_n_out_ad = 20
+        cfg.learning_rate = 0.002
+        cfg.test_from_epoch = 8
+        cfg.p_n_out_new = cfg.p_n_out
+        cfg.dist_n_out_new = cfg.dist_n_out
+        cfg.lin1_n_out_new = cfg.lin1_n_out - 20
+        cfg.rnn_n_out_new = cfg.rnn_n_out
+        cfg.lin2_n_out_new = cfg.lin2_n_out
+    cfg.dumpinit()
+    train_model(cfg)
 
 
 if __name__ == '__main__':
     # get_pku_basic()
-    get_cpb_basic()
+    # get_cpb_basic()
+    # get_cpb_pkupos_basic()
     # get_progressive()
+    get_progressive_concat()
+    # TODO: test (no-pos-pku-basic)+(prog-cpb-gold-pos-concat)

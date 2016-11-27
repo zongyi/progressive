@@ -108,6 +108,76 @@ class LinearLayer:
         self.l2 = (self.W ** 2).sum()
 
 
+class LinearAdLayer:
+    def __init__(self, rng, n_in, n_out,
+                 name, input_l, input_a, activation, W=None, b=None):
+        if isinstance(W, list):  # init W
+            W = theano.shared(value=numpy.asarray(W, dtype=theano.config.floatX), name=name + 'W', borrow=True)
+        elif isinstance(W, numpy.ndarray):
+            W = theano.shared(value=W, name=name + 'W', borrow=True)
+            print(name + ' W: init by numpy.ndarray' + str(W.get_value().shape))
+
+        if isinstance(b, list):  # init b
+            b = theano.shared(value=numpy.asarray(b, dtype=theano.config.floatX), name=name + 'b', borrow=True)
+        elif isinstance(b, numpy.ndarray):
+            b = theano.shared(value=b, name=name + 'b', borrow=True)
+            print(name + ' b: init by numpy.ndarray' + str(b.get_value().shape))
+
+        if W is None:
+            # for T.tanh
+            if activation == 'sigmoid':  # theano.tensor.nnet.sigmoid:
+                W_values = 4. * numpy.asarray(rng.uniform(low=-numpy.sqrt(6. / (n_in + n_out)),
+                                                          high=numpy.sqrt(6. / (n_in + n_out)),
+                                                          size=(n_in, n_out)), dtype=theano.config.floatX)
+            else:
+                W_values = numpy.asarray(rng.uniform(low=-numpy.sqrt(6. / (n_in + n_out)),
+                                                     high=numpy.sqrt(6. / (n_in + n_out)),
+                                                     size=(n_in, n_out)), dtype=theano.config.floatX)
+
+            W = theano.shared(value=W_values, name=name + 'w', borrow=True)
+
+        if b is None:
+            b_values = numpy.zeros((n_out,), dtype=theano.config.floatX)
+            if activation == 'sigmoid':  # theano.tensor.nnet.sigmoid:
+                b_values = -2 * numpy.ones((n_out,), dtype=theano.config.floatX)
+            b = theano.shared(value=b_values, name=name + 'b', borrow=True)
+        # print('linear layer params:%d' % (n_in * n_out + n_out))
+
+        self.input_l = input_l
+        self.input_a = input_a
+        self.W = W
+        self.b = b
+
+        self.params = [self.W, self.b]
+        # linear output
+
+        lin_output = T.dot(self.input_l, self.W) + self.b + self.input_a
+
+        if activation == 'hardtanh':
+            self.output_l = T.clip(lin_output, -1, 1)
+        elif activation == 'softmax':  # not correct for 3D tensors
+            if lin_output.ndim == 2:
+                self.output_l = T.nnet.softmax(lin_output)
+            elif lin_output.ndim == 3:
+                self.output_l = T.reshape(T.nnet.softmax(T.reshape(lin_output,
+                                                                   [input_l.shape[0] * input_l.shape[1], n_out])),
+                                          [input_l.shape[0], input_l.shape[1], n_out])
+        elif activation == 'tanh':
+            self.output_l = T.tanh(lin_output)
+        elif activation == 'relu':
+            self.output_l = T.nnet.relu(lin_output)
+        elif activation == 'sigmoid':
+            self.output_l = T.nnet.sigmoid(lin_output)  # TODO:Test this and its initialization
+        elif activation == 'none':
+            self.output_l = lin_output
+
+        self.l1 = abs(self.W).sum()
+        self.l2 = (self.W ** 2).sum()
+
+
+# todo:add max pooling linear layer
+
+
 class DropoutLayer:
     def __init__(self, p, input_d, use_noise):
         self.input_d = input_d
@@ -231,6 +301,160 @@ class LSTMLayer:
             self.output_lstm = lin_output
         else:
             raise NotImplementedError('please specify you activation func')
+
+
+class LSTMAdLayer:
+    def __init__(self, rng, n_in, n_out,
+                 input_lstm, input_a, input_mask,
+                 bidirect, name, activation, Ws=None, Us=None, bs=None):
+
+        if bidirect:
+            n_dim = int(n_out / 2)
+            if n_dim * 2 != n_out:
+                print('bidirectional model must have an even n_dim in LSTM layer!')
+                input()
+        else:
+            n_dim = n_out
+        # init by input ###############
+        # init Ws
+        if isinstance(Ws, list):
+            Ws = theano.shared(value=numpy.asarray(Ws, dtype=theano.config.floatX), name=name + 'Ws', borrow=True)
+        elif isinstance(Ws, numpy.ndarray):
+            Ws = theano.shared(value=Ws, name=name + 'Ws', borrow=True)
+            print(name + ' Ws: init by numpy.ndarray' + str(Ws.get_value().shape))
+        # init Us
+        if isinstance(Us, list):
+            Us = theano.shared(value=numpy.asarray(Us, dtype=theano.config.floatX), name=name + 'Us', borrow=True)
+        elif isinstance(Us, numpy.ndarray):
+            Us = theano.shared(value=Us, name=name + 'Us', borrow=True)
+            print(name + ' Us: init by numpy.ndarray' + str(Us.get_value().shape))
+        # init bs
+        if isinstance(bs, list):
+            bs = theano.shared(value=numpy.asarray(bs, dtype=theano.config.floatX), name=name + 'bs', borrow=True)
+        elif isinstance(bs, numpy.ndarray):
+            bs = theano.shared(value=bs, name=name + 'bs', borrow=True)
+            print(name + ' bs: init by numpy.ndarray' + str(bs.get_value().shape))
+        # randomly init ###############
+        # randomly init Ws: 2 for bidirectional, 4 for 4 gates in LSTM
+        if Ws is None:
+            W_v = numpy.asarray(rng.uniform(low=-numpy.sqrt(6. / (n_dim + n_in)),
+                                            high=numpy.sqrt(6. / (n_dim + n_in)),
+                                            size=(2 if bidirect else 1, 4, n_in, n_dim)), dtype=theano.config.floatX)
+            Ws = theano.shared(value=W_v, name=name + 'ws', borrow=True)
+        # randomly init Us: 2 for bidirectional, 4 for 4 gates in LSTM
+        if Us is None:
+            U_v = numpy.asarray(rng.uniform(low=-numpy.sqrt(6. / (n_dim + n_dim)),
+                                            high=numpy.sqrt(6. / (n_dim + n_dim)),
+                                            size=(2 if bidirect else 1, 4, n_dim, n_dim)), dtype=theano.config.floatX)
+            Us = theano.shared(value=U_v, name=name + 'us', borrow=True)
+        # randomly init bs: 2 for bidirectional, 4 for 4 gates in LSTM
+        if bs is None:
+            b_v = numpy.zeros((2 if bidirect else 1, 4, n_dim), dtype=theano.config.floatX)
+            bs = theano.shared(value=b_v, name=name + 'bs', borrow=True)
+
+        # print('linear layer params:%d' % ((2 if bidirect else 1) * 4 * (n_in + n_dim + 1) * n_dim))
+
+        self.input_lstm = input_lstm
+        self.input_a = input_a
+        self.input_mask = input_mask
+        self.Ws = Ws
+        self.Us = Us
+        self.bs = bs
+        self.params = [self.Ws, self.Us, self.bs]
+
+        self.l1 = abs(self.Us).sum()
+        self.l2 = (self.Us ** 2).sum()
+
+        def gates_ct_ht(x, a, mask, h, c, W, U, b):
+            gate0 = T.dot(x, W[0]) + T.dot(h, U[0]) + b[0] + a
+            gate1 = T.dot(x, W[1]) + T.dot(h, U[1]) + b[1] + a
+            gate2 = T.dot(x, W[2]) + T.dot(h, U[2]) + b[2] + a
+            gate3 = T.dot(x, W[3]) + T.dot(h, U[3]) + b[3] + a
+            ct = T.nnet.sigmoid(gate0) * T.tanh(gate1) + T.nnet.sigmoid(gate2) * c  # dim = n_f
+            ct = T.cast(mask[:, None] * ct + (1. - mask[:, None]) * c, theano.config.floatX)
+            ht = T.nnet.sigmoid(gate3) * T.tanh(ct)  # dim = n_f
+            ht = T.cast(mask[:, None] * ht + (1. - mask[:, None]) * h, theano.config.floatX)
+            return ht, ct
+
+        def gates_ct_ht_nomask(x, a, h, c, W, U, b):
+            gate0 = T.dot(x, W[0]) + T.dot(h, U[0]) + b[0] + a
+            gate1 = T.dot(x, W[1]) + T.dot(h, U[1]) + b[1] + a
+            gate2 = T.dot(x, W[2]) + T.dot(h, U[2]) + b[2] + a
+            gate3 = T.dot(x, W[3]) + T.dot(h, U[3]) + b[3] + a
+            ct = T.nnet.sigmoid(gate0) * T.tanh(gate1) + T.nnet.sigmoid(gate2) * c  # dim = n_f
+            ht = T.nnet.sigmoid(gate3) * T.tanh(ct)  # dim = n_f
+            return ht, ct
+
+        if input_lstm.ndim == 3:
+            output_info_shape = (input_lstm.shape[1], n_dim)
+        else:
+            output_info_shape = (n_dim,)
+        # forward LSTM
+        hids1, updates = theano.scan(fn=gates_ct_ht if input_mask else gates_ct_ht_nomask,
+                                     sequences=[self.input_lstm, self.input_a, self.input_mask]
+                                     if input_mask else [self.input_lstm, self.input_a],
+                                     outputs_info=[T.zeros(output_info_shape, dtype=theano.config.floatX),
+                                                   T.zeros(output_info_shape, dtype=theano.config.floatX)],
+                                     non_sequences=[self.Ws[0], self.Us[0], self.bs[0]])
+        # backward LSTM
+        if not bidirect:
+            lin_output = hids1[0]
+        else:
+            hids2, updates = theano.scan(fn=gates_ct_ht if input_mask else gates_ct_ht_nomask,
+                                         sequences=[self.input_lstm[::-1], self.input_a[::-1], self.input_mask[::-1]]
+                                         if input_mask else [self.input_lstm, self.input_a],
+                                         outputs_info=[T.zeros(output_info_shape, dtype=theano.config.floatX),
+                                                       T.zeros(output_info_shape, dtype=theano.config.floatX)],
+                                         non_sequences=[self.Ws[1], self.Us[1], self.bs[1]])
+            lin_output = T.concatenate([hids1[0], hids2[0][::-1]], axis=input_lstm.ndim - 1)
+
+        if activation == 'hardtanh':
+            self.output_lstm = T.clip(lin_output, -1, 1)
+        elif activation == 'softmax':
+            self.output_lstm = T.nnet.softmax(lin_output)
+        elif activation == 'tanh':
+            self.output_lstm = T.tanh(lin_output)
+        elif activation == 'sigmoid':
+            self.output_lstm = T.nnet.sigmoid(lin_output)  # TODO:Test this and its initialization
+        elif activation == 'none':
+            self.output_lstm = lin_output
+        else:
+            raise NotImplementedError('please specify you activation func')
+
+
+class AdapterLayer:
+    def __init__(self, rng, n_in, n_out,
+                 name, input_a, A=None, U=None):
+        if isinstance(A, float) or isinstance(A, numpy.float32):
+            A = theano.shared(value=numpy.float32(A), name=name + 'A', borrow=True)
+            print(name + ' A: init by numpy.float32')
+
+        if isinstance(A, list) or isinstance(A, numpy.ndarray):
+            U = theano.shared(value=numpy.asarray(U, dtype=theano.config.floatX), name=name + 'U', borrow=True)
+            print(name + ' U: init by numpy.ndarray' + str(U.get_value().shape))
+
+        if A is None:
+            A_values = numpy.float32(4. * (numpy.random.rand() * 0.0002 - 0.0001))
+            A = theano.shared(value=A_values, name=name + 'A', borrow=True)
+
+        if U is None:
+            U_values = numpy.asarray(rng.uniform(low=-numpy.sqrt(6. / (n_in + n_out) * 0.0001),
+                                                 high=numpy.sqrt(6. / (n_in + n_out) * 0.0001),
+                                                 size=(n_in, n_out)), dtype=theano.config.floatX)
+            U = theano.shared(value=U_values, name=name + 'U', borrow=True)
+        # print('linear layer params:%d' % (n_in * n_out + n_out))
+
+        self.input_a = input_a
+        self.A = A
+        self.U = U
+
+        self.params = [self.A, self.U]
+        # linear output
+
+        self.output_a = T.dot(T.nnet.sigmoid(self.A * self.input_a), self.U)
+
+        self.l1 = abs(self.U).sum()
+        self.l2 = (self.U ** 2).sum()
 
 
 # ref: https://github.com/dennybritz/rnn-tutorial-gru-lstm/blob/master/gru_theano.py
