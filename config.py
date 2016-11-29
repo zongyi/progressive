@@ -29,6 +29,8 @@ class Config:
         self.concat_n_out_ad = 0
         self.lin1_n_out_ad = 0
         self.rnn_n_out_ad = 0
+        self.use_crf1 = False
+        self.use_crf = False
         if '-t' in argvs:
             if argvs[argvs.index('-t') + 1] != '1':
                 self.dump_name = argvs[argvs.index('-dn') + 1]
@@ -55,7 +57,7 @@ class Config:
 
     def myinit(self):
         self.TAGGING1 = PKU_TAGGING
-        if self.data_name == 'cpb':
+        if self.data_name == 'cpb':  # for basic
             self.POSS = CPB_POSS
             self.TAGGING = CPB_TAGGING
             self.train_f = cpb_train_f
@@ -65,7 +67,7 @@ class Config:
             self.TRANS0 = CPB_TRANS0
             self.NOT_ENTRY_IDXS = CPB_NOT_ENTRY_IDXS
             self.NOT_EXIT_IDXS = CPB_NOT_EXIT_IDXS
-        elif self.data_name == 'pku':
+        elif self.data_name == 'pku':  # for basic
             self.POSS = PKU_POSS
             self.TAGGING = PKU_TAGGING
             self.train_f = pku_train_f
@@ -75,13 +77,34 @@ class Config:
             self.TRANS0 = PKU_TRANS0
             self.NOT_ENTRY_IDXS = PKU_NOT_ENTRY_IDXS
             self.NOT_EXIT_IDXS = PKU_NOT_EXIT_IDXS
-        elif self.data_name == 'cpb_pkupos':
+        elif self.data_name == 'cpb_pkupos':  # for progressive
             self.POSS = PKU_POSS
             self.TAGGING = CPB_TAGGING
             self.TAGGING1 = PKU_TAGGING
             self.train_f = cpb_pkupos_train_f
             self.dev_f = cpb_pkupos_dev_f
             self.test_f = cpb_pkupos_test_f
+            self.TRANS2 = CPB_TRANS2
+            self.TRANS0 = CPB_TRANS0
+            self.NOT_ENTRY_IDXS = CPB_NOT_ENTRY_IDXS
+            self.NOT_EXIT_IDXS = CPB_NOT_EXIT_IDXS
+        elif self.data_name == 'pku_cpbpos':  # for basic
+            self.POSS = CPB_POSS
+            self.TAGGING = PKU_TAGGING
+            self.train_f = pku_cpbpos_train_f
+            self.dev_f = pku_cpbpos_dev_f
+            self.test_f = pku_cpbpos_test_f
+            self.TRANS2 = PKU_TRANS2
+            self.TRANS0 = PKU_TRANS0
+            self.NOT_ENTRY_IDXS = PKU_NOT_ENTRY_IDXS
+            self.NOT_EXIT_IDXS = PKU_NOT_EXIT_IDXS
+        elif self.data_name == 'cpb_cpbpos':  # for progressive
+            self.POSS = CPB_POSS
+            self.TAGGING = CPB_TAGGING
+            self.TAGGING1 = PKU_TAGGING
+            self.train_f = cpb_train_f
+            self.dev_f = cpb_dev_f
+            self.test_f = cpb_test_f
             self.TRANS2 = CPB_TRANS2
             self.TRANS0 = CPB_TRANS0
             self.NOT_ENTRY_IDXS = CPB_NOT_ENTRY_IDXS
@@ -99,13 +122,15 @@ class Config:
               'lin1_n_out = %d, rnn_n_out = %d, lin2_n_out = %d, \n'
               'w_n_out_new = %d, p_n_out_new = %d, dist_n_out_new = %d, \n'
               'lin1_n_out_new = %d, rnn_n_out_new = %d, lin2_n_out_new = %d, \n'
-              'concat_n_out_ad = %d, lin1_n_out_ad = %d, rnn_n_out_ad = %d'
+              'concat_n_out_ad = %d, lin1_n_out_ad = %d, rnn_n_out_ad = %d, \n'
+              'use_crf1 = %s, use_crf = %s'
               % (self.data_name, self.model_type, self.dump_name, self.training, self.test_from_epoch,
                  self.end_epoch, self.test_freq, self.learning_rate, self.use_vecs, self.is_concat,
                  self.w_n_out, self.p_n_out, self.dist_n_out, self.lin1_n_out, self.rnn_n_out, self.lin2_n_out,
                  self.w_n_out_new, self.p_n_out_new, self.dist_n_out_new, self.lin1_n_out_new, self.rnn_n_out_new,
                  self.lin2_n_out_new,
-                 self.concat_n_out_ad, self.lin1_n_out_ad, self.rnn_n_out_ad))
+                 self.concat_n_out_ad, self.lin1_n_out_ad, self.rnn_n_out_ad,
+                 self.use_crf1, self.use_crf))
 
     def loadinit(self):
         with open(self.dump_name + '.cfg', 'rb') as f:
@@ -186,6 +211,14 @@ class Config:
                 pass
             try:
                 self.rnn_n_out_ad = s.rnn_n_out_ad
+            except:
+                pass
+            try:
+                self.use_crf1 = s.use_crf1
+            except:
+                pass
+            try:
+                self.use_crf = s.use_crf
             except:
                 pass
         self.myinit()

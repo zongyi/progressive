@@ -157,11 +157,15 @@ def train_model(cfg):
         use_noise1 = theano.shared(numpy.asarray(0., dtype=theano.config.floatX))
         loaded_W1, _, _, _, _, _ = load_model(cfg.dump_name1)
 
-        cpb = CpbDatasets('cpb', 50, 3, 500, CPB_POSS, CPB_TAGGING, cpb_train_f, cpb_dev_f, cpb_test_f)
-        pku = CpbDatasets('pku', 50, 3, 500, PKU_POSS, PKU_TAGGING, pku_train_f, pku_dev_f, pku_test_f)
-        cpb_data, cpb_vecs = cpb.get()  # this line is to init cpb.word2idx
-        pku_data, pku_vecs = pku.get()
-        net1 = BasicNet('basic', use_noise1, len(pku_vecs), worddim, len(cfg.POSS), cfg.p_n_out, max_dist + 2,
+        target = CpbDatasets('cpb', 50, 3, 500, CPB_POSS, CPB_TAGGING, cpb_train_f, cpb_dev_f, cpb_test_f)
+        if cfg.data_name == 'cpb_pkupos':
+            src = CpbDatasets('pku', 50, 3, 500, PKU_POSS, PKU_TAGGING, pku_train_f, pku_dev_f, pku_test_f)
+        else:  # if cfg.data_name == 'cpb_cpbpos':
+            src = CpbDatasets('pku_cpbpos', 50, 3, 500, CPB_POSS, PKU_TAGGING, pku_cpbpos_train_f, pku_cpbpos_dev_f,
+                              pku_cpbpos_test_f)
+        target_data, target_vecs = target.get()  # this line is to init cpb.word2idx
+        src_data, src_vecs = src.get()
+        net1 = BasicNet('basic', use_noise1, len(src_vecs), worddim, len(cfg.POSS), cfg.p_n_out, max_dist + 2,
                         cfg.dist_n_out,
                         cfg.lin1_n_out, cfg.rnn_n_out, cfg.lin2_n_out, len(cfg.TAGGING1),
                         window, cfg.TRANS2, cfg.TRANS0, inputs1,
@@ -178,7 +182,7 @@ def train_model(cfg):
                              [vecs if cfg.use_vecs else None, None, None, None, None, None, None, None,
                               None, None, None, None, None]) if loaded_W is None else loaded_W)
         inputs = [input_w1, input_v1, input_w, input_p, input_dist, input_v, input_entry_exit_mask, input_vi, input_y]
-        mapper = cpb2pku_mapper(cpb, pku)
+        mapper = cpb2pku_mapper(target, src)
         ws1, vs1 = map_cpb2pku(mapper, ws, vs, lens)
         test_ws1, test_vs1 = map_cpb2pku(mapper, test_ws, test_vs, test_lens)
     nll_cost = net.cal_cost(input_y, l1_lr, l2_lr)

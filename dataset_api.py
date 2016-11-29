@@ -317,32 +317,24 @@ def PkuDatasets_preprocess():
     test_fout.close()
 
 
-def pos_tag_cpb():
-    in_files = [cpb_train_f, cpb_dev_f, cpb_test_f]
-    out_files = [cpb_train_f_seg, cpb_dev_f_seg, cpb_test_f_seg]
-    for f1, f2 in zip(in_files, out_files):
-        if os.path.exists(f2): continue
-        with open(f1, 'rb') as fin:
-            with open(f2, 'wb') as fout:
-                while 1:
-                    line = fin.readline().strip()
-                    if not line:
-                        break
-                    segs = line.split(b' ')
-                    toks = []
-                    for seg in segs:
-                        items = seg.split(b'/')
-                        assert len(items) == 3
-                        toks.append(items[0])
-                    fout.write(b' '.join(toks) + b'\n')
-    print('cd ~/Data/wangzhen/bilsstm/text')
-    print('. run_test.sh cpbtrain.seg cpb_pkupos_train.pos')
-    print('. run_test.sh cpbdev.seg cpb_pkupos_dev.pos')
-    print('. run_test.sh cpbtest.seg cpb_pkupos_test.pos')
-    input('Are you sure all text has been tagged by pos-tagger?')
-    pos_in_files = [cpb_pkupos_train_f_pre, cpb_pkupos_dev_f_pre, cpb_pkupos_test_f_pre]
-    role_in_files = [cpb_train_f, cpb_dev_f, cpb_test_f]
-    out_files = [cpb_pkupos_train_f, cpb_pkupos_dev_f, cpb_pkupos_test_f]
+def get_f_seg(f1, f2):
+    if os.path.exists(f2): return
+    with open(f1, 'rb') as fin:
+        with open(f2, 'wb') as fout:
+            while 1:
+                line = fin.readline().strip()
+                if not line:
+                    break
+                segs = line.split(b' ')
+                toks = []
+                for seg in segs:
+                    items = seg.split(b'/')
+                    assert len(items) == 3
+                    toks.append(items[0])
+                fout.write(b' '.join(toks) + b'\n')
+
+
+def get_merged(pos_in_files, role_in_files, out_files, delim, valid):
     for f1, f2, f3 in zip(pos_in_files, role_in_files, out_files):
         with open(f1, 'rb') as pos_fin:
             with open(f2, 'rb') as role_fin:
@@ -353,20 +345,76 @@ def pos_tag_cpb():
                         if not role_line:
                             break
                         pos_segs = pos_line.split(b' ')
-                        pos_segs = pos_line.split(b' ')
                         role_segs = role_line.split(b' ')
                         new_segs = []
+                        val = True
                         for pos_seg, role_seg in zip(pos_segs, role_segs):
-                            pos_tok = pos_seg[:pos_seg.rfind(b'/') + 1]
-                            pos2 = pos_seg[pos_seg.rfind(b'/') + 1:]
-                            if pos2 in PKU_POSS2to1.keys():
-                                pos = PKU_POSS2to1[pos2]
-                            else:
-                                pos = str.encode(pos2.decode('utf-8')[0])
-                                print(pos2, pos)
+                            pos_tok = pos_seg[:pos_seg.rfind(delim)]
+                            pos2 = pos_seg[pos_seg.rfind(delim) + 1:]
+                            pos, val = valid(pos2)
+                            if not val:
+                                break
                             assert role_seg.startswith(pos_tok)
-                            new_segs.append(pos_tok + pos + role_seg[role_seg.rfind(b'/'):])
-                        fout.write(b' '.join(new_segs) + b'\n')
+                            new_segs.append(pos_tok + b'/' + pos + role_seg[role_seg.rfind(b'/'):])
+                        if val:
+                            fout.write(b' '.join(new_segs) + b'\n')
+
+
+def pos_tag_cpb():
+    in_files = [cpb_train_f, cpb_dev_f, cpb_test_f]
+    out_files = [cpb_train_f_seg, cpb_dev_f_seg, cpb_test_f_seg]
+    for f1, f2 in zip(in_files, out_files):
+        get_f_seg(f1, f2)
+    print('cd ~/Data/wangzhen/bilstm/text')
+    print('. run_test.sh cpbtrain.seg cpb_pkupos_train.pos')
+    print('. run_test.sh cpbdev.seg cpb_pkupos_dev.pos')
+    print('. run_test.sh cpbtest.seg cpb_pkupos_test.pos')
+    input('Are you sure all text has been tagged by pos-tagger?')
+    pos_in_files = [cpb_pkupos_train_f_pre, cpb_pkupos_dev_f_pre, cpb_pkupos_test_f_pre]
+    role_in_files = [cpb_train_f, cpb_dev_f, cpb_test_f]
+    out_files = [cpb_pkupos_train_f, cpb_pkupos_dev_f, cpb_pkupos_test_f]
+    delim = b'/'
+
+    def valid(pos2):
+        if pos2 in PKU_POSS2to1.keys():
+            pos = PKU_POSS2to1[pos2]
+        else:
+            pos = str.encode(pos2.decode('utf-8')[0])
+            print(pos2, pos)
+        return pos, True
+
+    get_merged(pos_in_files, role_in_files, out_files, delim, valid)
+
+
+def pos_tag_pku():
+    in_files = [pku_train_f, pku_dev_f, pku_test_f]
+    out_files = [pku_train_f_seg, pku_dev_f_seg, pku_test_f_seg]
+    for f1, f2 in zip(in_files, out_files):
+        get_f_seg(f1, f2)
+    print('cd /home/xql/Source/OpenSrc/stanford-postagger-full-2015-04-20')
+    print('java -cp \'stanford-postagger.jar:\' "edu.stanford.nlp.tagger.maxent.MaxentTagger" -model '
+          'models/chinese-distsim.tagger -textFile %s -outputFile %s -sentenceDelimiter newline' % (
+              pku_train_f_seg, pku_cpbpos_train_f_pre))
+    print('java -cp \'stanford-postagger.jar:\' "edu.stanford.nlp.tagger.maxent.MaxentTagger" -model '
+          'models/chinese-distsim.tagger -textFile %s -outputFile %s -sentenceDelimiter newline' % (
+              pku_dev_f_seg, pku_cpbpos_dev_f_pre))
+    print('java -cp \'stanford-postagger.jar:\' "edu.stanford.nlp.tagger.maxent.MaxentTagger" -model '
+          'models/chinese-distsim.tagger -textFile %s -outputFile %s -sentenceDelimiter newline' % (
+              pku_test_f_seg, pku_cpbpos_test_f_pre))
+    input('Are you sure all text has been tagged by pos-tagger?')
+    pos_in_files = [pku_cpbpos_train_f_pre, pku_cpbpos_dev_f_pre, pku_cpbpos_test_f_pre]
+    role_in_files = [pku_train_f, pku_dev_f, pku_test_f]
+    out_files = [pku_cpbpos_train_f, pku_cpbpos_dev_f, pku_cpbpos_test_f]
+    delim = b'#'
+
+    def valid(pos2):
+        if pos2 not in CPB_POSS:
+            print(pos2)
+            return pos2, False
+        else:
+            return pos2, True
+
+    get_merged(pos_in_files, role_in_files, out_files, delim, valid)
 
 
 def cpb2pku_mapper(cpb, pku):
@@ -392,8 +440,11 @@ if __name__ == '__main__':
     # data = CpbDatasets('cpb', 50, 3, 500, CPB_POSS, CPB_TAGGING, cpb_train_f, cpb_dev_f, cpb_test_f).get()
     # print(data[0][0][0].shape[1],data[0][1][0].shape[1],data[0][2][0].shape[1])
     # PkuDatasets_preprocess()
-    data = CpbDatasets('pku', 50, 3, 500, PKU_POSS, PKU_TAGGING, pku_train_f, pku_dev_f, pku_test_f).get()
+    # data = CpbDatasets('pku', 50, 3, 500, PKU_POSS, PKU_TAGGING, pku_train_f, pku_dev_f, pku_test_f).get()
     # pos_tag_cpb()
-    data = CpbDatasets('cpb_pkupos', 50, 3, 500, PKU_POSS, CPB_TAGGING, cpb_pkupos_train_f, cpb_pkupos_dev_f,
-                       cpb_pkupos_test_f).get()
+    # data = CpbDatasets('cpb_pkupos', 50, 3, 500, PKU_POSS, CPB_TAGGING, cpb_pkupos_train_f, cpb_pkupos_dev_f,
+    #                    cpb_pkupos_test_f).get()
     #wordmap()
+    # pos_tag_pku()
+    data = CpbDatasets('pku_cpbpos', 50, 3, 500, CPB_POSS, PKU_TAGGING, pku_cpbpos_train_f, pku_cpbpos_dev_f,
+                       pku_cpbpos_test_f).get()

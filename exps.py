@@ -50,13 +50,12 @@ def test_LSTM_GRU():
 
 def get_cpb_basic():
     print('cpb_basic')
-    cfg = Config('-dn model/cpbbasic -n cpb -t 1'.split())
+    cfg = Config('-dn model/cpbbasic -n cpb -t 2'.split())
     cfg.test_from_epoch = 0
-    cfg.learning_rate = 0.001
+    cfg.learning_rate = 0.002
     cfg.test_freq = 1000
     cfg.dumpinit()
     train_model(cfg)
-    cfg = Config('-dn model/cpbbasic2 -t 0'.split())
 
 
 def get_cpb_pkupos_basic():
@@ -129,7 +128,7 @@ def get_progressive_concat():
         cfg.lin1_n_out_new = cfg.lin1_n_out
         cfg.rnn_n_out_new = cfg.rnn_n_out - 10
         cfg.lin2_n_out_new = cfg.lin2_n_out
-    else:  # local concat
+    else:  # local concat: prog_concat
         cfg.is_concat = True
         cfg.use_vecs = True
         cfg.lin1_n_out_ad = 20
@@ -144,10 +143,66 @@ def get_progressive_concat():
     train_model(cfg)
 
 
+def get_prog_cat_lin1():
+    cfg = Config('-dn model/prog_concat_cat+lin1 -dn1 model/pkubasic '
+                 '-m progressive -n cpb_pkupos -t 2'.split())
+    cfg.test_freq = 1000
+    cfg.end_epoch = 50
+    # local concat: prog_concat_cat+lin1
+    cfg.is_concat = True
+    cfg.use_vecs = True
+    cfg.concat_n_out_ad = 40
+    cfg.lin1_n_out_ad = 20
+    cfg.learning_rate = 0.002
+    cfg.test_from_epoch = 8
+    cfg.p_n_out_new = cfg.p_n_out - 10
+    cfg.dist_n_out_new = cfg.dist_n_out - 10
+    cfg.lin1_n_out_new = cfg.lin1_n_out - 20
+    cfg.rnn_n_out_new = cfg.rnn_n_out
+    cfg.lin2_n_out_new = cfg.lin2_n_out
+    cfg.dumpinit()
+    train_model(cfg)
+
+
+def get_pku_cpbpos_basic():
+    print('pku_cpbpos')
+    cfg = Config('-dn model/pku_cpbpos_basic -n pku_cpbpos -t 2'.split())
+    cfg.test_from_epoch = 10
+    cfg.learning_rate = 0.002
+    cfg.test_freq = 1000
+    cfg.end_epoch = 30
+    cfg.dumpinit()
+    train_model(cfg)
+
+
+def get_progressive_goldpos():
+    cfg = Config('-dn model/prog_concat_gold -dn1 model/pku_cpbpos_basic -m progressive -n pku_cpbpos -t 1'.split())
+    cfg.test_from_epoch = 10
+    cfg.learning_rate = 0.002
+    cfg.test_freq = 1000
+    cfg.end_epoch = 50
+    import socket
+    print(socket.gethostname())
+    if socket.gethostname() == 'acl221':  # concat
+        cfg.is_concat = True
+        cfg.use_vecs = True
+        cfg.lin1_n_out_ad = 20
+        cfg.p_n_out_new = cfg.p_n_out
+        cfg.dist_n_out_new = cfg.dist_n_out
+        cfg.lin1_n_out_new = cfg.lin1_n_out - 20
+        cfg.rnn_n_out_new = cfg.rnn_n_out
+        cfg.lin2_n_out_new = cfg.lin2_n_out
+    cfg.dumpinit()
+    train_model(cfg)
+
 if __name__ == '__main__':
     # get_pku_basic()
     # get_cpb_basic()
     # get_cpb_pkupos_basic()
     # get_progressive()
-    get_progressive_concat()
+    # get_progressive_concat()
+    # get_prog_cat_lin1() # local
+    # get_pku_cpbpos_basic() # 221
+    get_progressive_goldpos()  # 221
+    # get_cpb_basic() # 221
     # TODO: test (no-pos-pku-basic)+(prog-cpb-gold-pos-concat)
