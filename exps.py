@@ -1,208 +1,105 @@
 from train import *
-from config import Config
-
-floatX = theano.config.floatX
 
 
-def numpy_floatX(data):
-    return numpy.float32(data)
-
-
-def test_LSTM_GRU():
-    rng = numpy.random.RandomState(39287)
-    # timesteps * n_samples * feature_dim
-    x = numpy.array([[[1, 2], [3, 4], [1, 2], [3, 4]], [[1, 2], [3, 4], [1, 2], [3, 4]]], dtype='float32')
-    y = numpy.array([[1, 1, 1, 1], [1, 1, 1, 1]], dtype='int32')[:, :, None]
-    mask = numpy.array([[1, 1, 1, 1], [1, 1, 1, 1]], dtype='int32')
-    input_layer = T.tensor3('x', dtype=floatX)
-    input_mask = T.matrix('mask', dtype='int32')
-
-    layer1pre = LSTMLayer(rng, 2, 2, input_layer, input_mask, False, 'lstm', 'none')
-    layer1 = LinearLayer(rng, 2, 2, 'l1', layer1pre.output_lstm, 'softmax')
-    layer2pre = GRULayer(rng, 2, 2, input_layer, input_mask, False, 'gru', 'none')
-    layer2 = LinearLayer(rng, 2, 2, 'l2', layer2pre.output_gru, 'softmax')
-
-    def nll(pred_prop, y):
-        def logadd(prob, mask, y):
-            return T.switch(T.gt(mask, 0.0), T.log(prob[y] + 1e-8), numpy_floatX(0.0))
-
-        shape_prob = (input_layer.shape[0] * input_layer.shape[1], 2)
-        shape_y = (input_layer.shape[0] * input_layer.shape[1],)
-        nll_all, updates = theano.scan(fn=logadd, sequences=[T.reshape(pred_prop, shape_prob),
-                                                             T.reshape(input_mask, shape_y),
-                                                             T.reshape(y, shape_y)])
-        return - T.sum(nll_all) / (T.sum(input_mask) + 1e-8)
-
-    cost1 = nll(layer1.output_l, y) + 0.001 * layer1pre.l2 + 0.001 * layer1.l2
-    cost2 = nll(layer2.output_l, y) + 0.001 * layer2pre.l2 + 0.001 * layer2.l2
-
-    def param_update(cost, layer):
-        gparams = [T.grad(cost, param) for param in layer.params]
-        updates = [(param, param - 0.01 * gparam)
-                   for param, gparam in zip(layer.params, gparams)]
-        return updates
-
-    func = theano.function(inputs=[input_layer, input_mask], outputs=[cost1, cost2],
-                           updates=param_update(cost1, layer1) + param_update(cost2, layer2))
-    for i in range(10):
-        print(func(x, mask))
-
-
-def get_cpb_basic():
-    print('cpb_basic')
-    cfg = Config('-dn model/cpbbasic -n cpb -t 2'.split())
-    cfg.test_from_epoch = 0
-    cfg.learning_rate = 0.002
-    cfg.test_freq = 1000
+def wangzhen_train():
+    cfg = Config('-t 1')
+    cfg.dump_name = 'model/params_'
     cfg.dumpinit()
-    train_model(cfg)
+    test_dp(cfg)
 
 
-def get_cpb_pkupos_basic():
-    print('cpb_pkupos')
-    cfg = Config('-dn model/cpb_pkupos -dn1 model/pkubasic -n cpb_pkupos -t 2'.split())
-    cfg.test_from_epoch = 0
-    cfg.learning_rate = 0.001
-    cfg.test_freq = 1000
-    cfg.end_epoch = 30
+def wangzhen_test():
+    cfg = Config('-t 0 -dn model/params_')
+    cfg.dump_name = 'model/params'
     cfg.dumpinit()
-    train_model(cfg)
+    test_dp(cfg)
 
 
-def get_pku_basic():
-    print('pku_basic')
-    cfg = Config('-dn model/pkubasic -n pku -t 2'.split())
-    cfg.test_from_epoch = 0
-    cfg.learning_rate = 0.001
-    cfg.test_freq = 100
+def pku_cpbpos():
+    cfg = Config('-t 0 -dn model/pku_cpbpos -n pku_cpbpos')
     cfg.dumpinit()
-    train_model(cfg)
+    test_dp(cfg)
 
 
-def get_progressive():
-    cfg = Config('-dn model/progressive -dn1 model/pkubasic -m progressive -n cpb_pkupos -t 2'.split())
-    cfg.test_from_epoch = 20
-    cfg.learning_rate = 0.001
-    cfg.test_freq = 1000
-    cfg.end_epoch = 50
-    import socket
-    print(socket.gethostname())
-    if socket.gethostname() == 'acl221':  # fake cpbbasic
-        cfg.test_from_epoch = 10
-        cfg.is_concat = True
-        cfg.use_vecs = True
-        cfg.dump_name = 'prog_fake_cpbbasic'
-        cfg.learning_rate = 0.002
-        cfg.p_n_out_new = cfg.p_n_out
-        cfg.dist_n_out_new = cfg.dist_n_out
-        cfg.lin1_n_out_new = cfg.lin1_n_out
-        cfg.rnn_n_out_new = cfg.rnn_n_out
-        cfg.lin2_n_out_new = cfg.lin2_n_out
-    else:  # local sum
-        cfg.use_vecs = True
-        cfg.rnn_n_out_ad = cfg.rnn_n_out
-        cfg.p_n_out_new = cfg.p_n_out
-        cfg.dist_n_out_new = cfg.dist_n_out
-        cfg.lin1_n_out_new = cfg.lin1_n_out
-        cfg.rnn_n_out_new = cfg.rnn_n_out
-        cfg.lin2_n_out_new = cfg.lin2_n_out
-        cfg.end_epoch = 70
+def cpb_cpb_prog():  # local
+    # 22 22099 f1 score: 77.289
+    cfg = Config('-t 2 -dn model/cpb_cpbpos -dn1 model/pku_cpbpos -n cpb_cpbpos -m prog')
+    cfg.w_n_out_new = 50
+    cfg.p_n_out_new = 20
+    cfg.dist_n_out_new = 30
+    cfg.lin1_n_out_new = 200
+    cfg.lin2_n_out_new = 80
+    cfg.concat_n_out_ad = 20
+    cfg.test_from_epoch = 4
+    cfg.test_freq = 10
     cfg.dumpinit()
-    train_model(cfg)
+    test_dp(cfg)
 
 
-def get_progressive_concat():
-    cfg = Config('-dn model/prog_concat -dn1 model/pkubasic -m progressive -n cpb_pkupos -t 2'.split())
-    cfg.test_from_epoch = 6
-    cfg.learning_rate = 0.002
-    cfg.test_freq = 1000
-    cfg.end_epoch = 50
-    import socket
-    print(socket.gethostname())
-    if socket.gethostname() == 'acl221':  # concat
-        cfg.is_concat = True
-        cfg.use_vecs = True
-        cfg.rnn_n_out_ad = 10
-        cfg.p_n_out_new = cfg.p_n_out
-        cfg.dist_n_out_new = cfg.dist_n_out
-        cfg.lin1_n_out_new = cfg.lin1_n_out
-        cfg.rnn_n_out_new = cfg.rnn_n_out - 10
-        cfg.lin2_n_out_new = cfg.lin2_n_out
-    else:  # local concat: prog_concat
-        cfg.is_concat = True
-        cfg.use_vecs = True
-        cfg.lin1_n_out_ad = 20
-        cfg.learning_rate = 0.002
-        cfg.test_from_epoch = 8
-        cfg.p_n_out_new = cfg.p_n_out
-        cfg.dist_n_out_new = cfg.dist_n_out
-        cfg.lin1_n_out_new = cfg.lin1_n_out - 20
-        cfg.rnn_n_out_new = cfg.rnn_n_out
-        cfg.lin2_n_out_new = cfg.lin2_n_out
-    cfg.dumpinit()
-    train_model(cfg)
-
-
-def get_prog_cat_lin1():
-    cfg = Config('-dn model/prog_concat_cat+lin1 -dn1 model/pkubasic '
-                 '-m progressive -n cpb_pkupos -t 2'.split())
-    cfg.test_freq = 1000
-    cfg.end_epoch = 50
-    # local concat: prog_concat_cat+lin1
-    cfg.is_concat = True
-    cfg.use_vecs = True
+def cpb_cpb_prog_all():  # local
+    # 23 11415 f1 score: 77.837%
+    cfg = Config('-t 0 -dn model/cpb_cpbpos_all -dn1 model/pku_cpbpos -n cpb_cpbpos -m prog')
+    cfg.w_n_out_new = 50
+    cfg.p_n_out_new = 20
+    cfg.dist_n_out_new = 30
+    cfg.lin1_n_out_new = 200
+    cfg.lin2_n_out_new = 80
     cfg.concat_n_out_ad = 40
     cfg.lin1_n_out_ad = 20
-    cfg.learning_rate = 0.002
-    cfg.test_from_epoch = 8
-    cfg.p_n_out_new = cfg.p_n_out - 10
-    cfg.dist_n_out_new = cfg.dist_n_out - 10
-    cfg.lin1_n_out_new = cfg.lin1_n_out - 20
-    cfg.rnn_n_out_new = cfg.rnn_n_out
-    cfg.lin2_n_out_new = cfg.lin2_n_out
+    cfg.rnn_n_out_ad = 10
+    cfg.test_from_epoch = 5
+    cfg.test_freq = 2
+    cfg.learning_rate = 0.0002
     cfg.dumpinit()
-    train_model(cfg)
+    test_dp(cfg)
 
 
-def get_pku_cpbpos_basic():
-    print('pku_cpbpos')
-    cfg = Config('-dn model/pku_cpbpos_basic -n pku_cpbpos -t 2'.split())
+def cpb_cpb_prog_all1():  # 221
+    # [(100003, 50), (34, 20), (502, 30), (330, 200), (200,), (2, 4, 220, 80), (2, 4, 80, 80),
+    # (2, 4, 80), (160, 80), (80,), (90, 73), (73,), (), (280, 40), (), (200, 20), (), (100, 10)]
+    cfg = Config('-t 2 -dn model/cpb_cpbpos_all1 -dn1 model/pku_cpbpos -n cpb_cpbpos -m prog')
+    cfg.w_n_out_new = 50
+    cfg.p_n_out_new = 20
+    cfg.dist_n_out_new = 30
+    cfg.lin1_n_out_new = 200
+    cfg.rnn_n_out_new = 200
+    cfg.lin2_n_out_new = 80
+    cfg.concat_n_out_ad = 40
+    cfg.lin1_n_out_ad = 20
+    cfg.rnn_n_out_ad = 10
     cfg.test_from_epoch = 10
-    cfg.learning_rate = 0.002
-    cfg.test_freq = 1000
-    cfg.end_epoch = 30
+    cfg.test_freq = 11000
+    cfg.learning_rate = 0.0008
     cfg.dumpinit()
-    train_model(cfg)
+    test_dp(cfg)
 
 
-def get_progressive_goldpos():
-    cfg = Config('-dn model/prog_concat_gold -dn1 model/pku_cpbpos_basic -m progressive -n pku_cpbpos -t 1'.split())
+def cpb_cpb_prog_all2():  # local
+    # 16 23251 f1 score 77.985%
+    # [(100003, 50), (34, 20), (502, 20), (320, 240), (240,), (2, 4, 270, 120), (2, 4, 120, 120),
+    #  (2, 4, 120), (240, 120), (120,), (140, 73), (73,), (), (280, 40), (), (200, 30), (), (100, 20)]
+    cfg = Config('-t 2 -dn model/cpb_cpbpos_all2 -dn1 model/pku_cpbpos -n cpb_cpbpos -m prog')
+    cfg.w_n_out_new = 50
+    cfg.p_n_out_new = 20
+    cfg.dist_n_out_new = 20
+    cfg.lin1_n_out_new = 240
+    cfg.rnn_n_out_new = 240
+    cfg.lin2_n_out_new = 120
+    cfg.concat_n_out_ad = 40
+    cfg.lin1_n_out_ad = 30
+    cfg.rnn_n_out_ad = 20
     cfg.test_from_epoch = 10
-    cfg.learning_rate = 0.002
-    cfg.test_freq = 1000
-    cfg.end_epoch = 50
-    import socket
-    print(socket.gethostname())
-    if socket.gethostname() == 'acl221':  # concat
-        cfg.is_concat = True
-        cfg.use_vecs = True
-        cfg.lin1_n_out_ad = 20
-        cfg.p_n_out_new = cfg.p_n_out
-        cfg.dist_n_out_new = cfg.dist_n_out
-        cfg.lin1_n_out_new = cfg.lin1_n_out - 20
-        cfg.rnn_n_out_new = cfg.rnn_n_out
-        cfg.lin2_n_out_new = cfg.lin2_n_out
+    cfg.test_freq = 2
+    cfg.learning_rate = 0.0002
     cfg.dumpinit()
-    train_model(cfg)
+    test_dp(cfg)
+
 
 if __name__ == '__main__':
-    # get_pku_basic()
-    # get_cpb_basic()
-    # get_cpb_pkupos_basic()
-    # get_progressive()
-    # get_progressive_concat()
-    # get_prog_cat_lin1() # local
-    # get_pku_cpbpos_basic() # 221
-    get_progressive_goldpos()  # 221
-    # get_cpb_basic() # 221
-    # TODO: test (no-pos-pku-basic)+(prog-cpb-gold-pos-concat)
+    # wangzhen_train()  # local
+    # wangzhen_test()  # local
+    # cpb_cpb_prog()  # local
+    # pku_cpbpos()  # local
+    cpb_cpb_prog_all()  # 221
+    # cpb_cpb_prog_all1()  # 221
+    # cpb_cpb_prog_all2()  # local

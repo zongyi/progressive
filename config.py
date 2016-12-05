@@ -5,13 +5,15 @@ from path import *
 
 class Config:
     def __init__(self, argvs):
+        if isinstance(argvs, str):
+            argvs = argvs.split()
         self.data_name = 'cpb'
         self.model_type = 'basic'
         self.training = 0
         self.test_from_epoch = 0
         self.end_epoch = 30
         self.test_freq = 1000
-        self.learning_rate = 0.005
+        self.learning_rate = 0.001
         self.use_vecs = True
         self.is_concat = False  # sum or concat adapter outputs
         self.w_n_out = 50
@@ -29,6 +31,8 @@ class Config:
         self.concat_n_out_ad = 0
         self.lin1_n_out_ad = 0
         self.rnn_n_out_ad = 0
+        self.lin3_n_out_ad = 0
+        self.lin4_n_out_ad = 0
         self.use_crf1 = False
         self.use_crf = False
         if '-t' in argvs:
@@ -56,6 +60,7 @@ class Config:
             i += 1
 
     def myinit(self):
+        pass
         self.TAGGING1 = PKU_TAGGING
         if self.data_name == 'cpb':  # for basic
             self.POSS = CPB_POSS
@@ -63,20 +68,34 @@ class Config:
             self.train_f = cpb_train_f
             self.dev_f = cpb_dev_f
             self.test_f = cpb_test_f
+            self.train_pkl = cpb_train_pkl
+            self.dev_pkl = cpb_dev_pkl
+            self.test_pkl = cpb_test_pkl
             self.TRANS2 = CPB_TRANS2
             self.TRANS0 = CPB_TRANS0
             self.NOT_ENTRY_IDXS = CPB_NOT_ENTRY_IDXS
             self.NOT_EXIT_IDXS = CPB_NOT_EXIT_IDXS
+            self.TRANS21 = PKU_TRANS2
+            self.TRANS01 = PKU_TRANS0
+            self.NOT_ENTRY_IDXS1 = PKU_NOT_ENTRY_IDXS
+            self.NOT_EXIT_IDXS1 = PKU_NOT_EXIT_IDXS
         elif self.data_name == 'pku':  # for basic
             self.POSS = PKU_POSS
             self.TAGGING = PKU_TAGGING
             self.train_f = pku_train_f
             self.dev_f = pku_dev_f
             self.test_f = pku_test_f
+            self.train_pkl = pku_train_pkl
+            self.dev_pkl = pku_dev_pkl
+            self.test_pkl = pku_test_pkl
             self.TRANS2 = PKU_TRANS2
             self.TRANS0 = PKU_TRANS0
             self.NOT_ENTRY_IDXS = PKU_NOT_ENTRY_IDXS
             self.NOT_EXIT_IDXS = PKU_NOT_EXIT_IDXS
+            self.TRANS21 = CPB_TRANS2
+            self.TRANS01 = CPB_TRANS0
+            self.NOT_ENTRY_IDXS1 = CPB_NOT_ENTRY_IDXS
+            self.NOT_EXIT_IDXS1 = CPB_NOT_EXIT_IDXS
         elif self.data_name == 'cpb_pkupos':  # for progressive
             self.POSS = PKU_POSS
             self.TAGGING = CPB_TAGGING
@@ -84,20 +103,34 @@ class Config:
             self.train_f = cpb_pkupos_train_f
             self.dev_f = cpb_pkupos_dev_f
             self.test_f = cpb_pkupos_test_f
+            self.train_pkl = cpb_pkupos_train_pkl
+            self.dev_pkl = cpb_pkupos_dev_pkl
+            self.test_pkl = cpb_pkupos_test_pkl
             self.TRANS2 = CPB_TRANS2
             self.TRANS0 = CPB_TRANS0
             self.NOT_ENTRY_IDXS = CPB_NOT_ENTRY_IDXS
             self.NOT_EXIT_IDXS = CPB_NOT_EXIT_IDXS
+            self.TRANS21 = PKU_TRANS2
+            self.TRANS01 = PKU_TRANS0
+            self.NOT_ENTRY_IDXS1 = PKU_NOT_ENTRY_IDXS
+            self.NOT_EXIT_IDXS1 = PKU_NOT_EXIT_IDXS
         elif self.data_name == 'pku_cpbpos':  # for basic
             self.POSS = CPB_POSS
             self.TAGGING = PKU_TAGGING
             self.train_f = pku_cpbpos_train_f
             self.dev_f = pku_cpbpos_dev_f
             self.test_f = pku_cpbpos_test_f
+            self.train_pkl = pku_cpbpos_train_pkl
+            self.dev_pkl = pku_cpbpos_dev_pkl
+            self.test_pkl = pku_cpbpos_test_pkl
             self.TRANS2 = PKU_TRANS2
             self.TRANS0 = PKU_TRANS0
             self.NOT_ENTRY_IDXS = PKU_NOT_ENTRY_IDXS
             self.NOT_EXIT_IDXS = PKU_NOT_EXIT_IDXS
+            self.TRANS21 = CPB_TRANS2
+            self.TRANS01 = CPB_TRANS0
+            self.NOT_ENTRY_IDXS1 = CPB_NOT_ENTRY_IDXS
+            self.NOT_EXIT_IDXS1 = CPB_NOT_EXIT_IDXS
         elif self.data_name == 'cpb_cpbpos':  # for progressive
             self.POSS = CPB_POSS
             self.TAGGING = CPB_TAGGING
@@ -105,10 +138,17 @@ class Config:
             self.train_f = cpb_train_f
             self.dev_f = cpb_dev_f
             self.test_f = cpb_test_f
+            self.train_pkl = cpb_train_pkl
+            self.dev_pkl = cpb_dev_pkl
+            self.test_pkl = cpb_test_pkl
             self.TRANS2 = CPB_TRANS2
             self.TRANS0 = CPB_TRANS0
             self.NOT_ENTRY_IDXS = CPB_NOT_ENTRY_IDXS
             self.NOT_EXIT_IDXS = CPB_NOT_EXIT_IDXS
+            self.TRANS21 = PKU_TRANS2
+            self.TRANS01 = PKU_TRANS0
+            self.NOT_ENTRY_IDXS1 = PKU_NOT_ENTRY_IDXS
+            self.NOT_EXIT_IDXS1 = PKU_NOT_EXIT_IDXS
 
     def dumpinit(self):
         with open(self.dump_name + '.cfg', 'wb') as f:
@@ -122,14 +162,14 @@ class Config:
               'lin1_n_out = %d, rnn_n_out = %d, lin2_n_out = %d, \n'
               'w_n_out_new = %d, p_n_out_new = %d, dist_n_out_new = %d, \n'
               'lin1_n_out_new = %d, rnn_n_out_new = %d, lin2_n_out_new = %d, \n'
-              'concat_n_out_ad = %d, lin1_n_out_ad = %d, rnn_n_out_ad = %d, \n'
+              'concat_n_out_ad = %d, lin1_n_out_ad = %d, rnn_n_out_ad = %d, lin3_n_out_ad = %d, lin4_n_out_ad = %d, \n'
               'use_crf1 = %s, use_crf = %s'
               % (self.data_name, self.model_type, self.dump_name, self.training, self.test_from_epoch,
                  self.end_epoch, self.test_freq, self.learning_rate, self.use_vecs, self.is_concat,
                  self.w_n_out, self.p_n_out, self.dist_n_out, self.lin1_n_out, self.rnn_n_out, self.lin2_n_out,
                  self.w_n_out_new, self.p_n_out_new, self.dist_n_out_new, self.lin1_n_out_new, self.rnn_n_out_new,
                  self.lin2_n_out_new,
-                 self.concat_n_out_ad, self.lin1_n_out_ad, self.rnn_n_out_ad,
+                 self.concat_n_out_ad, self.lin1_n_out_ad, self.rnn_n_out_ad, self.lin3_n_out_ad, self.lin4_n_out_ad,
                  self.use_crf1, self.use_crf))
 
     def loadinit(self):
@@ -211,6 +251,14 @@ class Config:
                 pass
             try:
                 self.rnn_n_out_ad = s.rnn_n_out_ad
+            except:
+                pass
+            try:
+                self.lin3_n_out_ad = s.lin3_n_out_ad
+            except:
+                pass
+            try:
+                self.lin4_n_out_ad = s.lin4_n_out_ad
             except:
                 pass
             try:

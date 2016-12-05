@@ -2,12 +2,20 @@ import socket as skt
 
 # if skt.gethostname() in ['acl', 'acl221']:
 vec_bin_f = '/home/xql/Data/wangzhen/bilstm/vector/vectors.bin'
-cpb_train_f = '/home/xql/Data/wangzhen/bilstm/text/cpbtrain'
+cpb_train_f = '/home/xql/Data/wangzhen/bilstm/test/cpbtrain'
 cpb_test_f = '/home/xql/Data/wangzhen/bilstm/text/cpbtest'
 cpb_dev_f = '/home/xql/Data/wangzhen/bilstm/text/cpbdev'
+cpb_train_pkl = '/home/xql/Data/wangzhen/bilstm/data/input_format.pkl'
+cpb_dev_pkl = '/home/xql/Data/wangzhen/bilstm/data/input_format_d.pkl'
+cpb_test_pkl = '/home/xql/Data/wangzhen/bilstm/data/input_format_t.pkl'
+
 pku_train_f = '/home/xql/Data/wangzhen/bilstm/text/pkutrain'
 pku_test_f = '/home/xql/Data/wangzhen/bilstm/text/pkutest'
 pku_dev_f = '/home/xql/Data/wangzhen/bilstm/text/pkudev'
+pku_train_pkl = '/home/xql/Data/wangzhen/bilstm/data/pkutrain_pkl'
+pku_test_pkl = '/home/xql/Data/wangzhen/bilstm/data/pkutest_pkl'
+pku_dev_pkl = '/home/xql/Data/wangzhen/bilstm/data/pkudev_pkl'
+
 cpb_train_f_seg = '/home/xql/Data/wangzhen/bilstm/text/cpbtrain.seg'
 cpb_test_f_seg = '/home/xql/Data/wangzhen/bilstm/text/cpbtest.seg'
 cpb_dev_f_seg = '/home/xql/Data/wangzhen/bilstm/text/cpbdev.seg'
@@ -20,11 +28,19 @@ cpb_pkupos_dev_f_pre = '/home/xql/Data/wangzhen/bilstm/text/cpb_pkupos_dev.pos'
 pku_cpbpos_train_f_pre = '/home/xql/Data/wangzhen/bilstm/text/pku_cpbpos_train.pos'
 pku_cpbpos_test_f_pre = '/home/xql/Data/wangzhen/bilstm/text/pku_cpbpos_test.pos'
 pku_cpbpos_dev_f_pre = '/home/xql/Data/wangzhen/bilstm/text/pku_cpbpos_dev.pos'
+
 cpb_pkupos_train_f = '/home/xql/Data/wangzhen/bilstm/text/cpb_pkupos_train'
 cpb_pkupos_test_f = '/home/xql/Data/wangzhen/bilstm/text/cpb_pkupos_test'
 cpb_pkupos_dev_f = '/home/xql/Data/wangzhen/bilstm/text/cpb_pkupos_dev'
+cpb_pkupos_train_pkl = '/home/xql/Data/wangzhen/bilstm/data/cpb_pkupos_train.pkl'
+cpb_pkupos_test_pkl = '/home/xql/Data/wangzhen/bilstm/data/cpb_pkupos_test.pkl'
+cpb_pkupos_dev_pkl = '/home/xql/Data/wangzhen/bilstm/data/cpb_pkupos_dev.pkl'
+
 pku_cpbpos_train_f = '/home/xql/Data/wangzhen/bilstm/text/pku_cpbpos_train'
 pku_cpbpos_test_f = '/home/xql/Data/wangzhen/bilstm/text/pku_cpbpos_test'
 pku_cpbpos_dev_f = '/home/xql/Data/wangzhen/bilstm/text/pku_cpbpos_dev'
+pku_cpbpos_train_pkl = '/home/xql/Data/wangzhen/bilstm/data/pku_cpbpos_train.pkl'
+pku_cpbpos_test_pkl = '/home/xql/Data/wangzhen/bilstm/data/pku_cpbpos_test.pkl'
+pku_cpbpos_dev_pkl = '/home/xql/Data/wangzhen/bilstm/data/pku_cpbpos_dev.pkl'
 
 pku_text_f = '/media/xql/新加卷/Source/VSO/PKU/Lab/POSTagger-Train_TestV5/data/news/text.txt'
